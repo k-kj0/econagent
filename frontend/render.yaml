@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: econagent-api
+    runtime: docker
+    plan: free
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PORT
+        value: 8000
+    healthCheckPath: /health
