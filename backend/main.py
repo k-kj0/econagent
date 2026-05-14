@@ -237,7 +237,7 @@ class AgentStep(BaseModel):
     result: str
 
 class AgentQueryResponse(BaseModel):
-        steps: List[AgentStep]
+    steps: List[AgentStep]
     conclusion: str
     confidence: str
     sources: List[str]
