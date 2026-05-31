@@ -1,0 +1,507 @@
+import { useState, useEffect, useRef } from "react";
+ 
+/* ─── Palette & tokens ─────────────────────────────────────────────────── */
+const C = {
+  bg: "#080d1a",
+  sidebar: "rgba(18,24,45,0.92)",
+  panel: "rgba(14,20,38,0.80)",
+  border: "rgba(99,179,237,0.14)",
+  primary: "#63b3ed",    // blue
+  accent: "#76e4f7",     // cyan
+  danger: "#fc8181",     // red
+  warn: "#f6ad55",       // orange
+  success: "#68d391",    // green
+  muted: "rgba(180,200,230,0.45)",
+  fg: "#e2eaf7",
+  fgDim: "rgba(226,234,247,0.65)",
+};
+ 
+/* ─── Tiny sparkline ────────────────────────────────────────────────────── */
+function Sparkline({ data, color, rising }) {
+  const max = Math.max(...data), min = Math.min(...data);
+  const range = max - min || 1;
+  const W = 280, H = 64;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * W;
+    const y = H - ((v - min) / range) * (H - 8) - 4;
+    return `${x},${y}`;
+  }).join(" L ");
+  const last = pts.split(" L ").at(-1);
+  const [lx, ly] = last.split(",").map(Number);
+  const fill = `${pts} L ${W},${H} L 0,${H} Z`;
+ 
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: 64, display: "block" }} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id={`sg-${color.replace(/[^a-z]/gi,"")}`} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={`M ${fill}`} fill={`url(#sg-${color.replace(/[^a-z]/gi,"")})`} />
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round"
+        style={{ filter: `drop-shadow(0 0 4px ${color})` }} />
+      <circle cx={lx} cy={ly} r="3" fill={color} style={{ filter: `drop-shadow(0 0 6px ${color})` }}>
+        <animate attributeName="r" values="3;4.5;3" dur="1.5s" repeatCount="indefinite" />
+      </circle>
+    </svg>
+  );
+}
+ 
+/* ─── Metric card ───────────────────────────────────────────────────────── */
+function MetricCard({ label, value, unit, delta, deltaUp, color, sparkData }) {
+  return (
+    <div style={{
+      background: C.panel, border: `1px solid ${C.border}`, borderRadius: 10,
+      padding: "12px 14px", marginBottom: 10,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <span style={{ fontFamily: "monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.2em", color: C.muted }}>{label}</span>
+        <span style={{ fontFamily: "monospace", fontSize: 11, color: deltaUp ? C.danger : C.accent, display: "flex", alignItems: "center", gap: 4 }}>
+          {deltaUp ? "▲" : "▼"} {delta}
+        </span>
+      </div>
+      <div style={{ fontFamily: "monospace", fontSize: 22, color: C.fg, marginTop: 2 }}>
+        {value}<span style={{ fontSize: 10, color: C.muted, marginLeft: 4 }}>{unit}</span>
+      </div>
+      <Sparkline data={sparkData} color={color} rising={deltaUp} />
+    </div>
+  );
+}
+ 
+/* ─── Globe SVG ─────────────────────────────────────────────────────────── */
+function Globe() {
+  const hotspots = [
+    { x: "35%", y: "40%", color: C.danger, label: "Amazon" },
+    { x: "60%", y: "55%", color: C.success, label: "Reef" },
+    { x: "70%", y: "30%", color: C.primary, label: "Arctic" },
+    { x: "45%", y: "70%", color: C.warn, label: "Sahel" },
+  ];
+  return (
+    <div style={{ position: "relative", width: "min(80%, 440px)", aspectRatio: "1", margin: "auto" }}>
+      {/* glow backdrop */}
+      <div style={{
+        position: "absolute", inset: 0, borderRadius: "50%",
+        background: "radial-gradient(circle, rgba(99,179,237,0.22) 0%, transparent 70%)",
+        filter: "blur(24px)",
+      }} />
+      {/* planet */}
+      <svg viewBox="0 0 200 200" style={{ width: "100%", height: "100%", display: "block" }}>
+        <defs>
+          <radialGradient id="planet" cx="35%" cy="30%" r="60%">
+            <stop offset="0%" stopColor="#2a5a8a" />
+            <stop offset="50%" stopColor="#153360" />
+            <stop offset="100%" stopColor="#08101e" />
+          </radialGradient>
+          <radialGradient id="atmo" cx="50%" cy="50%" r="50%">
+            <stop offset="80%" stopColor="transparent" />
+            <stop offset="100%" stopColor="rgba(99,179,237,0.18)" />
+          </radialGradient>
+          <clipPath id="globe-clip"><circle cx="100" cy="100" r="98" /></clipPath>
+        </defs>
+        {/* base */}
+        <circle cx="100" cy="100" r="98" fill="url(#planet)" />
+        {/* landmasses */}
+        <g fill="rgba(99,179,237,0.35)" clipPath="url(#globe-clip)">
+          <path d="M55 70 Q72 58 87 68 T112 78 Q118 95 102 102 L80 97 Q64 90 55 70Z" />
+          <path d="M118 88 Q140 82 152 100 T148 132 L132 126 Q116 110 118 88Z" />
+          <path d="M68 118 Q90 112 102 130 T86 152 L76 146 Q60 135 68 118Z" />
+          <path d="M128 48 Q146 43 152 58 L142 64 Q126 58 128 48Z" />
+          <path d="M30 90 Q50 85 55 100 L45 108 Q28 105 30 90Z" />
+        </g>
+        {/* lat/lon lines */}
+        {[15,30,45,60,75,90].map(r => (
+          <ellipse key={r} cx="100" cy="100" rx={r} ry="98" fill="none" stroke="rgba(99,179,237,0.12)" strokeWidth="0.4" />
+        ))}
+        {[15,30,45,60,75,90].map(r => (
+          <ellipse key={r} cx="100" cy="100" rx="98" ry={r} fill="none" stroke="rgba(118,228,247,0.09)" strokeWidth="0.4" />
+        ))}
+        {/* atmosphere rim */}
+        <circle cx="100" cy="100" r="98" fill="url(#atmo)" />
+        <circle cx="100" cy="100" r="98" fill="none" stroke="rgba(99,179,237,0.3)" strokeWidth="1.5"
+          style={{ filter: "drop-shadow(0 0 8px rgba(99,179,237,0.5))" }} />
+      </svg>
+      {/* hotspot markers */}
+      {hotspots.map(h => (
+        <div key={h.label} style={{
+          position: "absolute", left: h.x, top: h.y,
+          transform: "translate(-50%,-50%)", cursor: "pointer",
+        }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: "50%", background: h.color,
+            boxShadow: `0 0 12px ${h.color}`,
+            animation: "pulse 1.8s ease-in-out infinite",
+          }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+ 
+/* ─── Wave visualiser ───────────────────────────────────────────────────── */
+function WaveBar({ i }) {
+  const h = 12 + Math.abs(Math.sin(i * 0.8)) * 28;
+  const col = i < 32 ? C.primary : C.accent;
+  return (
+    <span style={{
+      display: "inline-block", width: 3, borderRadius: 2,
+      background: col, boxShadow: `0 0 5px ${col}`,
+      height: h, animation: `wave ${0.8 + (i % 5) * 0.15}s ease-in-out ${(i * 0.05) % 1.2}s infinite alternate`,
+      verticalAlign: "middle",
+    }} />
+  );
+}
+ 
+/* ─── Sidebar conversation list ─────────────────────────────────────────── */
+const CONVOS = [
+  { title: "Amazon basin deforestation", sources: 8, time: "2m ago", active: true },
+  { title: "Arctic sea ice anomaly", sources: 12, time: "14m ago" },
+  { title: "California wildfire spread", sources: 6, time: "38m ago" },
+  { title: "Pacific coral bleaching index", sources: 4, time: "1h ago" },
+  { title: "North Sea wind capacity", sources: 9, time: "2h ago" },
+  { title: "Methane plume Permian", sources: 3, time: "4h ago" },
+  { title: "Siberian permafrost thaw", sources: 11, time: "yesterday" },
+  { title: "ENSO Q3 outlook", sources: 7, time: "yesterday" },
+];
+ 
+/* ─── Intel feed cards ──────────────────────────────────────────────────── */
+const NEWS = [
+  { src: "REUTERS", badge: "CRITICAL", badgeColor: C.danger, title: "Amazon loses 1,240 km² in 30-day window", time: "LIVE", bg: "#0d1f10" },
+  { src: "NASA EOSDIS", badge: "ANOMALY", badgeColor: C.accent, title: "Arctic ice extent 18% below baseline", time: "2m ago", bg: "#0a1520" },
+  { src: "CAL FIRE", badge: "ALERT", badgeColor: C.warn, title: "Sierra blaze jumps containment line overnight", time: "14m ago", bg: "#1a130a" },
+  { src: "BLOOMBERG", badge: "TREND", badgeColor: C.primary, title: "North Sea wind output sets new daily record", time: "38m ago", bg: "#0a1020" },
+  { src: "NOAA", badge: "WATCH", badgeColor: C.accent, title: "Great Barrier Reef enters 4th bleaching event", time: "1h ago", bg: "#0a1520" },
+];
+ 
+/* ─── Sparkline data ────────────────────────────────────────────────────── */
+const carbonData = [60,55,58,48,50,42,46,34,42,30,22,26,14,18,4];
+const canopyData = [4,14,14,25,25,36,36,46,46,56,56,66,66,76,76];
+ 
+/* ─── Main component ────────────────────────────────────────────────────── */
+export default function EcoAgent() {
+  const [sessionTime, setSessionTime] = useState(0);
+  const [activeConvo, setActiveConvo] = useState(0);
+ 
+  useEffect(() => {
+    const t = setInterval(() => setSessionTime(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+ 
+  const fmt = s => {
+    const h = String(Math.floor(s / 3600)).padStart(2, "0");
+    const m = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+    const sec = String(s % 60).padStart(2, "0");
+    return `${h}:${m}:${sec}`;
+  };
+ 
+  return (
+    <div style={{ display: "flex", height: "100vh", width: "100vw", overflow: "hidden", background: C.bg, color: C.fg, fontFamily: "system-ui, sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(99,179,237,0.2); border-radius: 2px; }
+        @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.6; transform:scale(1.6); } }
+        @keyframes ping  { 0% { transform:scale(1); opacity:0.8; } 100% { transform:scale(2.5); opacity:0; } }
+        @keyframes wave  { from { transform:scaleY(0.4); } to { transform:scaleY(1); } }
+        @keyframes spin  { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+        @keyframes blink { 0%,100%{opacity:1}50%{opacity:0.4} }
+      `}</style>
+ 
+      {/* ── Sidebar ── */}
+      <aside style={{
+        width: 260, flexShrink: 0, display: "flex", flexDirection: "column",
+        borderRight: `1px solid ${C.border}`, background: C.sidebar, backdropFilter: "blur(20px)",
+      }}>
+        {/* Logo */}
+        <div style={{ padding: "18px 20px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 8, display: "grid", placeItems: "center",
+              background: `linear-gradient(135deg, ${C.primary}, ${C.accent})`,
+              boxShadow: `0 0 18px rgba(99,179,237,0.4)`,
+            }}>
+              <span style={{ fontSize: 16 }}>✦</span>
+            </div>
+            <div>
+              <div style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 18, letterSpacing: "0.3em", color: C.primary, textShadow: `0 0 12px ${C.primary}` }}>ECO</div>
+              <div style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: "0.25em", color: C.muted, textTransform: "uppercase" }}>agent v2.4</div>
+            </div>
+          </div>
+          <button style={{
+            width: 28, height: 28, borderRadius: 6, border: `1px solid rgba(99,179,237,0.3)`,
+            background: "transparent", color: C.primary, cursor: "pointer", fontSize: 16, display: "grid", placeItems: "center",
+          }}>+</button>
+        </div>
+ 
+        <div style={{ padding: "0 20px 8px", fontFamily: "monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.25em", color: C.muted }}>Conversations</div>
+ 
+        <div style={{ flex: 1, overflowY: "auto", padding: "0 10px 12px" }}>
+          {CONVOS.map((c, i) => (
+            <button key={i} onClick={() => setActiveConvo(i)} style={{
+              display: "flex", width: "100%", alignItems: "flex-start", gap: 8, padding: "9px 10px",
+              borderRadius: 7, border: i === activeConvo ? `1px solid rgba(99,179,237,0.4)` : "1px solid transparent",
+              background: i === activeConvo ? "rgba(99,179,237,0.1)" : "transparent",
+              cursor: "pointer", textAlign: "left", marginBottom: 2, transition: "all 0.15s",
+            }}>
+              <span style={{ color: i === activeConvo ? C.primary : C.muted, marginTop: 2, flexShrink: 0, fontSize: 12 }}>◻</span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 13, color: i === activeConvo ? C.fg : C.fgDim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</div>
+                <div style={{ fontFamily: "monospace", fontSize: 10, color: C.muted }}>{c.sources} sources · {c.time}</div>
+              </div>
+              {i === activeConvo && (
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary, boxShadow: `0 0 8px ${C.primary}`, marginTop: 6, flexShrink: 0, animation: "blink 1.5s ease-in-out infinite" }} />
+              )}
+            </button>
+          ))}
+        </div>
+ 
+        <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: "50%", background: `linear-gradient(135deg, ${C.accent}, ${C.primary})`, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Commander Vale</div>
+            <div style={{ fontFamily: "monospace", fontSize: 10, color: C.muted }}>clearance · L4</div>
+          </div>
+          <span style={{ color: C.muted, fontSize: 14, cursor: "pointer" }}>⚙</span>
+        </div>
+      </aside>
+ 
+      {/* ── Main area ── */}
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
+ 
+        {/* Top bar */}
+        <header style={{
+          height: 56, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "0 20px", borderBottom: `1px solid ${C.border}`,
+          background: "rgba(10,16,30,0.85)", backdropFilter: "blur(20px)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+            {/* Live indicator */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ position: "relative", width: 8, height: 8 }}>
+                <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: C.danger, animation: "ping 1.4s ease-out infinite", opacity: 0.6 }} />
+                <div style={{ position: "relative", width: 8, height: 8, borderRadius: "50%", background: C.danger, boxShadow: `0 0 8px ${C.danger}` }} />
+              </div>
+              <span style={{ fontFamily: "monospace", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.3em", color: C.danger }}>LIVE</span>
+            </div>
+            <div style={{ width: 1, height: 20, background: C.border }} />
+            <div style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
+              <span style={{ fontFamily: "monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.2em", color: C.muted }}>SESSION</span>
+              <span style={{ fontFamily: "monospace", fontSize: 14, color: C.fg }}>{fmt(sessionTime)}</span>
+            </div>
+            <div style={{ width: 1, height: 20, background: C.border }} />
+            <div style={{ fontFamily: "monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.2em", color: C.muted }}>
+              ⬡ model · eco-orion · 0.42ms
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button style={{
+              width: 32, height: 32, borderRadius: 6, border: `1px solid ${C.border}`,
+              background: "transparent", color: C.muted, cursor: "pointer", fontSize: 14, display: "grid", placeItems: "center",
+            }}>🔔</button>
+            <button style={{
+              display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 7,
+              border: `1px solid rgba(118,228,247,0.4)`, background: "rgba(118,228,247,0.1)",
+              color: C.accent, cursor: "pointer", fontSize: 12, fontWeight: 600,
+              boxShadow: `0 0 12px rgba(118,228,247,0.15)`,
+            }}>♛ <span style={{ letterSpacing: "0.2em", textTransform: "uppercase" }}>Boss Mode</span></button>
+          </div>
+        </header>
+ 
+        {/* Content */}
+        <div style={{ flex: 1, display: "flex", overflow: "hidden", paddingBottom: 84 }}>
+ 
+          {/* Center: Globe + Intel feed */}
+          <main style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12, padding: 16, minWidth: 0, overflow: "hidden" }}>
+ 
+            {/* Globe panel */}
+            <section style={{
+              flex: "1 1 60%", position: "relative", borderRadius: 14, overflow: "hidden",
+              background: C.panel, border: `1px solid ${C.border}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 50% 50%, rgba(99,179,237,0.12) 0%, transparent 65%)" }} />
+              <Globe />
+              <div style={{ position: "absolute", top: 14, left: 14, fontFamily: "monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.2em", color: "rgba(99,179,237,0.7)" }}>
+                <div>// GLOBAL FEED</div>
+                <div style={{ color: C.muted }}>lat 0.000 · lon 0.000</div>
+              </div>
+              <div style={{ position: "absolute", top: 14, right: 14, textAlign: "right", fontFamily: "monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.2em", color: "rgba(99,179,237,0.7)" }}>
+                <div>4 ACTIVE EVENTS</div>
+                <div style={{ color: C.muted }}>scan rate 60hz</div>
+              </div>
+              <div style={{ position: "absolute", bottom: 12, left: 14, fontFamily: "monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.2em", color: C.muted }}>
+                SYS: nominal · uplink 99.7%
+              </div>
+            </section>
+ 
+            {/* Intel feed */}
+            <section style={{ flex: "1 1 40%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 4px 8px" }}>
+                <div>
+                  <span style={{ fontFamily: "monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.3em", color: C.primary }}>// Intel feed</span>
+                  <span style={{ fontFamily: "monospace", fontSize: 10, color: C.muted }}> · auto-curated by ECO</span>
+                </div>
+                <span style={{ fontFamily: "monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.2em", color: C.muted }}>scroll →</span>
+              </div>
+              <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4, flex: 1 }}>
+                {NEWS.map((n, i) => (
+                  <article key={i} style={{
+                    width: 250, flexShrink: 0, borderRadius: 10, overflow: "hidden",
+                    border: `1px solid ${C.border}`, background: n.bg,
+                    display: "flex", flexDirection: "column",
+                    transition: "border-color 0.2s", cursor: "pointer",
+                  }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(99,179,237,0.5)"}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = C.border}
+                  >
+                    {/* Image placeholder with gradient */}
+                    <div style={{ height: 90, background: `linear-gradient(135deg, ${n.bg}, rgba(99,179,237,0.15))`, position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <div style={{ fontSize: 28, opacity: 0.4 }}>
+                        {["🌿","🌊","🔥","💨","🪸"][i]}
+                      </div>
+                      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(8,13,26,0.9) 0%, transparent 60%)" }} />
+                      <span style={{
+                        position: "absolute", top: 8, left: 8, padding: "2px 6px",
+                        background: "rgba(8,13,26,0.8)", border: `1px solid rgba(99,179,237,0.4)`,
+                        borderRadius: 4, fontFamily: "monospace", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.2em", color: C.primary,
+                      }}>{n.src}</span>
+                      <span style={{
+                        position: "absolute", top: 8, right: 8, padding: "2px 6px",
+                        background: `${n.badgeColor}22`, border: `1px solid ${n.badgeColor}66`,
+                        borderRadius: 4, fontFamily: "monospace", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.15em", color: n.badgeColor,
+                      }}>{n.badge}</span>
+                    </div>
+                    <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", flex: 1, gap: 8 }}>
+                      <h3 style={{ fontSize: 13, lineHeight: 1.4, color: C.fg, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{n.title}</h3>
+                      <div style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span style={{ fontFamily: "monospace", fontSize: 10, color: C.muted }}>{n.time}</span>
+                        <button style={{
+                          display: "flex", alignItems: "center", gap: 4, padding: "4px 8px",
+                          border: `1px solid rgba(99,179,237,0.4)`, borderRadius: 4,
+                          background: "rgba(99,179,237,0.08)", color: C.primary,
+                          fontFamily: "monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.15em", cursor: "pointer",
+                        }}>▶ Analyze</button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </main>
+ 
+          {/* Right panel: Live readout */}
+          <aside style={{
+            width: 300, flexShrink: 0, display: "flex", flexDirection: "column", gap: 0,
+            borderLeft: `1px solid ${C.border}`, background: C.sidebar, padding: 16, overflowY: "auto",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+              <div>
+                <div style={{ fontFamily: "monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.3em", color: C.primary }}>// Live readout</div>
+                <div style={{ fontSize: 13, marginTop: 4 }}>Amazon basin · sector 7</div>
+              </div>
+              <div style={{
+                padding: "4px 8px", border: `1px solid rgba(99,179,237,0.3)`,
+                borderRadius: 5, fontFamily: "monospace", fontSize: 10, color: C.primary, cursor: "pointer",
+              }}>SYNC</div>
+            </div>
+ 
+            <MetricCard
+              label="Carbon flux" value="847.2" unit="MtCO₂e"
+              delta="+12.4%" deltaUp={true} color={C.danger}
+              sparkData={carbonData}
+            />
+            <MetricCard
+              label="Canopy index" value="0.682" unit=""
+              delta="-3.1%" deltaUp={false} color={C.primary}
+              sparkData={canopyData}
+            />
+ 
+            {/* Key signals */}
+            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
+              <div style={{ fontFamily: "monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.2em", color: C.muted, marginBottom: 8 }}>Key signals</div>
+              {[
+                { color: C.danger, text: "Fire alerts up 240% week-over-week" },
+                { color: C.primary, text: "Río Negro tributary turbidity rising" },
+                { color: C.accent, text: "Indigenous land claims: 14 pending" },
+                { color: C.success, text: "Soy moratorium compliance at 91%" },
+              ].map((s, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 8 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: s.color, boxShadow: `0 0 8px ${s.color}`, marginTop: 6, flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, color: C.fgDim, lineHeight: 1.5 }}>{s.text}</span>
+                </div>
+              ))}
+ 
+              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10, marginTop: 4 }}>
+                <div style={{ fontFamily: "monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.2em", color: C.muted, marginBottom: 6 }}>Citations</div>
+                {[
+                  "[1] nasa.gov/eosdis · MODIS-AQUA",
+                  "[2] imazon.org.br · SAD-Q3",
+                  "[3] globalforestwatch · GFW-2026",
+                  "[4] noaa.gov/climate · CDR-v4",
+                ].map((c, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                    <span style={{ fontFamily: "monospace", fontSize: 11, color: "rgba(99,179,237,0.75)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer" }}>{c}</span>
+                    <span style={{ color: C.muted, marginLeft: 4, flexShrink: 0, fontSize: 10 }}>↗</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+ 
+            <button style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px",
+              border: `1px solid ${C.border}`, borderRadius: 10,
+              background: "rgba(99,179,237,0.05)", color: C.primary, cursor: "pointer", fontSize: 12,
+              transition: "border-color 0.2s",
+            }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(99,179,237,0.5)"}
+              onMouseLeave={e => e.currentTarget.style.borderColor = C.border}
+            >
+              Expand intel briefing <span style={{ fontSize: 14 }}>↗</span>
+            </button>
+          </aside>
+        </div>
+      </div>
+ 
+      {/* ── Bottom input bar ── */}
+      <div style={{
+        position: "fixed", bottom: 0, left: 260, right: 0, zIndex: 20,
+        borderTop: `1px solid ${C.border}`, background: "rgba(8,12,24,0.92)", backdropFilter: "blur(20px)",
+        height: 80, display: "flex", alignItems: "center", gap: 16, padding: "0 20px",
+      }}>
+        {/* Mic button */}
+        <button style={{
+          width: 48, height: 48, borderRadius: "50%", flexShrink: 0,
+          background: `linear-gradient(135deg, ${C.primary}, ${C.accent})`,
+          border: "none", cursor: "pointer", display: "grid", placeItems: "center",
+          boxShadow: `0 0 20px rgba(99,179,237,0.4)`, fontSize: 18, animation: "pulse 2s ease-in-out infinite",
+        }}>🎙</button>
+ 
+        {/* Waveform */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
+          <span style={{ color: "rgba(99,179,237,0.5)", fontSize: 14 }}>〰</span>
+          <div style={{ display: "flex", flex: 1, alignItems: "center", gap: "2px", height: 40, overflow: "hidden" }}>
+            {Array.from({ length: 60 }, (_, i) => <WaveBar key={i} i={i} />)}
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontFamily: "monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.25em", color: C.primary }}>
+              <span style={{ color: C.fg }}>Hey Eco...</span> listening
+            </div>
+            <div style={{ fontFamily: "monospace", fontSize: 10, color: C.muted }}>say "show me the arctic" or press ⌘K</div>
+          </div>
+        </div>
+ 
+        {/* Shortcut badge */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 6, padding: "6px 10px",
+          border: `1px solid rgba(99,179,237,0.3)`, borderRadius: 7,
+          background: "rgba(99,179,237,0.06)", fontFamily: "monospace", fontSize: 10, color: C.muted,
+        }}>
+          ⌘ <span>K</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+ 
