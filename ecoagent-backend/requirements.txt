@@ -1,6 +1,5 @@
 fastapi
-uvicorn[standard]
+uvicorn
 google-generativeai
 httpx
 python-dotenv
-pydantic
