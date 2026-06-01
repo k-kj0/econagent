@@ -50,3 +50,14 @@ function ArcReactor({ isThinking }: { isThinking: boolean }) {
     </div>
   );
 }
+const [showMap, setShowMap] = useState(false);
+const [mapRegion, setMapRegion] = useState('');
+const [newsCards, setNewsCards] = useState([]);
+
+// After getting agent response, detect if location was queried:
+const locationKeywords = ['india', 'usa', 'china', 'uk', 'europe', 'japan'];
+const detected = locationKeywords.find(loc => userMessage.toLowerCase().includes(loc));
+if (detected) {
+  setShowMap(true);
+  setMapRegion(detected);
+}
