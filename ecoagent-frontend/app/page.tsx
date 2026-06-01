@@ -61,3 +61,27 @@ if (detected) {
   setShowMap(true);
   setMapRegion(detected);
 }
+const [narrating, setNarrating] = useState(false);
+
+async function typewriterNarrate(text: string) {
+  setNarrating(true);
+  let displayed = '';
+  for (const char of text) {
+    displayed += char;
+    setCurrentResponse(displayed);
+    await new Promise(r => setTimeout(r, 18)); // speed
+  }
+  setNarrating(false);
+}
+
+// In your fetch response handler:
+const fullText = await response.text();
+await typewriterNarrate(fullText);
+const [conversationHistory, setConversationHistory] = useState([]);
+
+// Keep last N messages and send full history to API
+const messages = [...conversationHistory, { role: 'user', content: input }];
+setConversationHistory(messages);
+
+// After response:
+setConversationHistory(prev => [...prev, { role: 'assistant', content: agentReply }]);
