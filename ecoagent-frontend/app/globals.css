@@ -38,3 +38,27 @@ body {
 
 .animate-wave { animation: wave 1s ease-in-out infinite; }
 .animate-spin-slow { animation: spin-slow 20s linear infinite; }
+@keyframes rotate-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes rotate-fast-reverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes pulse-ring {
+  0%, 100% { opacity: 0.7; stroke-width: 1.5px; }
+  50% { opacity: 1; stroke-width: 4px; filter: drop-shadow(0 0 8px #00ffff); }
+}
+
+@keyframes core-pulse {
+  0%, 100% { r: 10; opacity: 1; }
+  50% { r: 15; opacity: 0.6; }
+}
+
+.rotate-slow { animation: rotate-slow 8s linear infinite; transform-origin: 150px 150px; }
+.rotate-fast-reverse { animation: rotate-fast-reverse 2s linear infinite; transform-origin: 150px 150px; }
+.thinking .pulse-ring { animation: pulse-ring 0.8s ease-in-out infinite; }
+.thinking .core-pulse { animation: core-pulse 0.6s ease-in-out infinite; }
