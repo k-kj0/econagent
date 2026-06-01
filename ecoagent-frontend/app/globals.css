@@ -1,64 +1,157 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
+ 
 * { box-sizing: border-box; margin: 0; padding: 0; }
-
+ 
 body {
   background: #080d1a;
   color: #e2e8f0;
   font-family: 'JetBrains Mono', monospace;
   overflow: hidden;
 }
-
+ 
 .glass {
   background: rgba(0, 212, 255, 0.05);
   border: 1px solid rgba(0, 212, 255, 0.15);
   backdrop-filter: blur(12px);
 }
-
+ 
 .glow { box-shadow: 0 0 20px rgba(0, 212, 255, 0.3); }
-
 .text-glow { text-shadow: 0 0 10px rgba(0, 212, 255, 0.8); }
-
+ 
+/* ── Microphone wave bars ── */
 @keyframes wave {
   0%, 100% { transform: scaleY(0.3); }
   50% { transform: scaleY(1); }
 }
-
-@keyframes ping-slow {
-  0% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(2.5); opacity: 0; }
-}
-
+.animate-wave { animation: wave 1s ease-in-out infinite; }
+ 
+/* ── Slow outer ring spin ── */
 @keyframes spin-slow {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-
-.animate-wave { animation: wave 1s ease-in-out infinite; }
 .animate-spin-slow { animation: spin-slow 20s linear infinite; }
+ 
+/* ── Arc Reactor tick ring (clockwise, slow) ── */
 @keyframes rotate-slow {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-
+.rotate-slow {
+  animation: rotate-slow 8s linear infinite;
+  transform-origin: 150px 150px;
+}
+ 
+/* ── Arc Reactor energy ring (counter-clockwise, fast) ── */
 @keyframes rotate-fast-reverse {
   from { transform: rotate(360deg); }
   to { transform: rotate(0deg); }
 }
-
+.rotate-fast-reverse {
+  animation: rotate-fast-reverse 2s linear infinite;
+  transform-origin: 150px 150px;
+}
+ 
+/* ── Middle ring pulse when agent is thinking ── */
 @keyframes pulse-ring {
   0%, 100% { opacity: 0.7; stroke-width: 1.5px; }
-  50% { opacity: 1; stroke-width: 4px; filter: drop-shadow(0 0 8px #00ffff); }
+  50%       { opacity: 1;   stroke-width: 4px; filter: drop-shadow(0 0 10px #00ffff); }
 }
-
+ 
+/* ── Core dot pulse when thinking ── */
 @keyframes core-pulse {
-  0%, 100% { r: 10; opacity: 1; }
-  50% { r: 15; opacity: 0.6; }
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(1.6); }
 }
-
-.rotate-slow { animation: rotate-slow 8s linear infinite; transform-origin: 150px 150px; }
-.rotate-fast-reverse { animation: rotate-fast-reverse 2s linear infinite; transform-origin: 150px 150px; }
-.thinking .pulse-ring { animation: pulse-ring 0.8s ease-in-out infinite; }
-.thinking .core-pulse { animation: core-pulse 0.6s ease-in-out infinite; }
+ 
+/* Apply thinking animations via parent class */
+.thinking .pulse-ring {
+  animation: pulse-ring 0.8s ease-in-out infinite;
+}
+.thinking .core-dot {
+  animation: core-pulse 0.6s ease-in-out infinite;
+  transform-origin: 150px 150px;
+}
+ 
+/* ── Outer glow ring: always slowly breathing ── */
+@keyframes outer-breathe {
+  0%, 100% { opacity: 0.25; }
+  50%       { opacity: 0.55; }
+}
+.outer-breathe {
+  animation: outer-breathe 3s ease-in-out infinite;
+}
+ 
+/* ── Map overlay fade-in ── */
+@keyframes fade-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.map-fade-in {
+  animation: fade-in 0.4s ease-out forwards;
+}
+ 
+/* ── Inflation chart slide-up ── */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.slide-up {
+  animation: slide-up 0.45s ease-out forwards;
+}
+ 
+/* ── News card geo pin pop ── */
+@keyframes pop-in {
+  0%   { opacity: 0; transform: scale(0.7) translateY(8px); }
+  70%  { transform: scale(1.05) translateY(-2px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.pop-in { animation: pop-in 0.35s ease-out forwards; }
+ 
+/* ── Typewriter cursor blink ── */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+.typewriter-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: #00ffff;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 0.8s ease-in-out infinite;
+}
+ 
+/* ── Ping slow for live dot ── */
+@keyframes ping-slow {
+  0%   { transform: scale(1); opacity: 1; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+ 
+/* ── Scrolling ticker ── */
+@keyframes ticker-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.ticker-track {
+  animation: ticker-scroll 40s linear infinite;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+ 
+/* ── Chart grid lines ── */
+.chart-grid-line {
+  stroke: rgba(0, 212, 255, 0.08);
+  stroke-dasharray: 4 4;
+}
+ 
+/* ── Scrollbar styling ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.2); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,212,255,0.4); }
+ 
