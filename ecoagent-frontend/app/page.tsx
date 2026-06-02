@@ -7,7 +7,6 @@ interface Message {
   id: string;
   role: "user" | "bot";
   text: string;
-  timestamp: Date;
 }
 
 interface NewsItem {
@@ -17,8 +16,8 @@ interface NewsItem {
   image?: string;
 }
 
-/* ─── Sparkline SVG ───────────────────────────────────────────── */
-function Sparkline({ data, color = "#00ffff", height = 40, width = 120 }: { data: number[]; color?: string; height?: number; width?: number }) {
+/* ─── Sparkline ───────────────────────────────────────────────── */
+function Sparkline({ data, color = "#00d4ff", height = 40, width = 120 }: { data: number[]; color?: string; height?: number; width?: number }) {
   if (!data || data.length < 2) return <div style={{ width, height }} />;
   const max = Math.max(...data);
   const min = Math.min(...data);
@@ -43,10 +42,10 @@ function Sparkline({ data, color = "#00ffff", height = 40, width = 120 }: { data
   );
 }
 
-/* ─── Revolving Globe (Canvas) ───────────────────────────────── */
-function RevolvingGlobe({ mode, newsItems }: { mode: "idle" | "news" | "inflation"; newsItems?: NewsItem[] }) {
+/* ─── Globe Canvas ────────────────────────────────────────────── */
+function GlobeCanvas({ mode, newsItems }: { mode: "idle" | "news"; newsItems?: NewsItem[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rotationRef = useRef(0);
+  const rotRef = useRef(0);
   const animRef = useRef<number>(0);
 
   useEffect(() => {
@@ -61,7 +60,7 @@ function RevolvingGlobe({ mode, newsItems }: { mode: "idle" | "news" | "inflatio
       if (!rect) return;
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
-      ctx.scale(dpr, dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     resize();
     window.addEventListener("resize", resize);
@@ -85,10 +84,10 @@ function RevolvingGlobe({ mode, newsItems }: { mode: "idle" | "news" | "inflatio
       const radius = Math.min(w, h) * 0.35;
 
       ctx.clearRect(0, 0, w, h);
-      rotationRef.current += 0.002;
-      const rot = rotationRef.current;
+      rotRef.current += 0.002;
+      const rot = rotRef.current;
 
-      // Outer glow
+      // Glow
       const glow = ctx.createRadialGradient(cx, cy, radius * 0.7, cx, cy, radius * 1.5);
       glow.addColorStop(0, "rgba(0,212,255,0.12)");
       glow.addColorStop(0.5, "rgba(0,212,255,0.04)");
@@ -96,14 +95,14 @@ function RevolvingGlobe({ mode, newsItems }: { mode: "idle" | "news" | "inflatio
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, w, h);
 
-      // Main globe circle
+      // Main circle
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.strokeStyle = "rgba(0,212,255,0.2)";
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      // Grid lines (longitude)
+      // Longitude
       for (let i = 0; i < 12; i++) {
         const angle = (i / 12) * Math.PI * 2 + rot;
         ctx.beginPath();
@@ -113,7 +112,7 @@ function RevolvingGlobe({ mode, newsItems }: { mode: "idle" | "news" | "inflatio
         ctx.stroke();
       }
 
-      // Latitude lines
+      // Latitude
       for (let i = -3; i <= 3; i++) {
         const y = cy + (i / 3) * radius * 0.6;
         const r = Math.sqrt(Math.max(0, radius * radius - (y - cy) * (y - cy)));
@@ -126,7 +125,7 @@ function RevolvingGlobe({ mode, newsItems }: { mode: "idle" | "news" | "inflatio
         }
       }
 
-      // Continent dots
+      // Continents
       continents.forEach(([lon, lat]) => {
         const x = cx + lon * radius * Math.cos(rot * 0.5);
         const y = cy + lat * radius;
@@ -139,7 +138,7 @@ function RevolvingGlobe({ mode, newsItems }: { mode: "idle" | "news" | "inflatio
         }
       });
 
-      // Pulse ring
+      // Pulse
       const pulse = (Date.now() % 4000) / 4000;
       ctx.beginPath();
       ctx.arc(cx, cy, radius * (0.7 + pulse * 0.5), 0, Math.PI * 2);
@@ -154,12 +153,10 @@ function RevolvingGlobe({ mode, newsItems }: { mode: "idle" | "news" | "inflatio
           const mx = cx + Math.cos(angle) * radius * 0.65;
           const my = cy + Math.sin(angle) * radius * 0.45;
           const blink = 0.5 + Math.sin(Date.now() / 300 + i * 2) * 0.4;
-
           ctx.beginPath();
           ctx.arc(mx, my, 3, 0, Math.PI * 2);
           ctx.fillStyle = `rgba(0,255,255,${blink})`;
           ctx.fill();
-
           ctx.beginPath();
           ctx.arc(mx, my, 7, 0, Math.PI * 2);
           ctx.strokeStyle = `rgba(0,255,255,${blink * 0.5})`;
@@ -178,25 +175,7 @@ function RevolvingGlobe({ mode, newsItems }: { mode: "idle" | "news" | "inflatio
     };
   }, [mode, newsItems]);
 
-  return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
-      {mode === "news" && newsItems && (
-        <div className="absolute top-[10%] left-1/2 -translate-x-1/2 flex gap-3 z-10 max-w-[90%] overflow-x-auto px-2">
-          {newsItems.slice(0, 3).map((news, i) => (
-            <div key={i} className="glass rounded-lg p-3 min-w-[180px] max-w-[200px] shrink-0 hover:border-[rgba(0,212,255,0.4)] transition-all duration-300 cursor-pointer">
-              {news.image && (
-                <div className="w-full h-14 rounded bg-cover bg-center mb-2" style={{ backgroundImage: `url(${news.image})` }} />
-              )}
-              <div className="text-[10px] text-[#00d4ff] mb-1 uppercase tracking-wider">{news.source}</div>
-              <div className="text-[11px] text-[#e2e8f0] leading-relaxed line-clamp-3">{news.title}</div>
-              <div className="text-[9px] text-[#94a3b8] mt-1">{news.time}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />;
 }
 
 /* ─── Inflation Dashboard ─────────────────────────────────────── */
@@ -222,15 +201,12 @@ function InflationDashboard() {
 
       <div className="flex gap-2 mb-4 flex-wrap">
         {countries.map((c) => (
-          <button
-            key={c.code}
-            onClick={() => setSelected(c)}
+          <button key={c.code} onClick={() => setSelected(c)}
             className={`px-3 py-1.5 rounded text-[11px] transition-all duration-200 border ${
               selected.code === c.code
                 ? "bg-[rgba(0,212,255,0.1)] border-[rgba(0,212,255,0.3)] text-[#00d4ff]"
                 : "bg-transparent border-[rgba(0,212,255,0.1)] text-[#94a3b8] hover:border-[rgba(0,212,255,0.2)]"
-            }`}
-          >
+            }`}>
             {c.code}
           </button>
         ))}
@@ -275,7 +251,6 @@ export default function Home() {
       id: "welcome",
       role: "bot",
       text: "Hey! I'm EcoAgent — your global economic intelligence system. How can I help you today? Ask me about inflation forecasts, market news, or any economic indicator. Give me a minute to check the data if you need something specific.",
-      timestamp: new Date(),
     },
   ]);
   const [inputText, setInputText] = useState("");
@@ -303,7 +278,6 @@ export default function Home() {
       id: Date.now().toString(),
       role: "user",
       text: inputText.trim(),
-      timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMsg]);
@@ -324,7 +298,6 @@ export default function Home() {
       setActiveTab("home");
     }
 
-    // Call your actual API
     try {
       const response = await fetch('/api/ask', {
         method: 'POST',
@@ -339,11 +312,9 @@ export default function Home() {
         id: (Date.now() + 1).toString(),
         role: "bot",
         text: data.response || data.text || "I've processed your request. The data is now available on the dashboard.",
-        timestamp: new Date(),
       };
       setMessages((prev) => [...prev, botMsg]);
     } catch (err) {
-      // Smart fallback responses
       let fallback = "";
       if (text.includes("news") || text.includes("america")) {
         fallback = "Wait a minute, let me check the latest headlines for you... Alright, here's what I found: The Federal Reserve is signaling potential rate cuts in Q3 2026 as CPI drops to 2.88%. Energy price stabilization is the primary driver. I've marked the key stories on the globe for you — check the cards above.";
@@ -359,7 +330,6 @@ export default function Home() {
         id: (Date.now() + 1).toString(),
         role: "bot",
         text: fallback,
-        timestamp: new Date(),
       };
       setMessages((prev) => [...prev, botMsg]);
     } finally {
@@ -388,7 +358,7 @@ export default function Home() {
   return (
     <div className="h-screen w-screen bg-[#080d1a] text-[#e2e8f0] font-mono overflow-hidden flex flex-col">
 
-      {/* ─── TOP BAR ─── */}
+      {/* Top Bar */}
       <div className="h-12 border-b border-[rgba(0,212,255,0.1)] flex items-center px-4 shrink-0 bg-[rgba(8,13,26,0.95)]">
         <div className="text-sm font-semibold text-[#00d4ff] tracking-[2px]">ECOAGENT</div>
         <div className="text-[10px] text-[#94a3b8] ml-2">v2.4 · GLOBAL INTELLIGENCE</div>
@@ -398,10 +368,10 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ─── MAIN CONTENT ─── */}
+      {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
 
-        {/* LEFT SIDEBAR */}
+        {/* Left Sidebar */}
         <div className="w-[220px] border-r border-[rgba(0,212,255,0.1)] flex flex-col p-3 gap-1 shrink-0 bg-[rgba(18,24,45,0.6)]">
           <div className="flex flex-col gap-0.5">
             {[
@@ -434,21 +404,35 @@ export default function Home() {
           </div>
         </div>
 
-        {/* CENTER + RIGHT CHAT */}
+        {/* Center + Right Chat */}
         <div className="flex-1 flex overflow-hidden">
 
-          {/* CENTER AREA */}
+          {/* Center Area */}
           <div className="flex-1 relative bg-[#080d1a] overflow-hidden">
             {centerMode === "inflation" ? (
               <InflationDashboard />
             ) : centerMode === "news" ? (
-              <RevolvingGlobe mode="news" newsItems={newsData} />
+              <div className="absolute inset-0">
+                <GlobeCanvas mode="news" newsItems={newsData} />
+                <div className="absolute top-[10%] left-1/2 -translate-x-1/2 flex gap-3 z-10 max-w-[90%] overflow-x-auto px-2">
+                  {newsData.slice(0, 3).map((news, i) => (
+                    <div key={i} className="glass rounded-lg p-3 min-w-[180px] max-w-[200px] shrink-0 hover:border-[rgba(0,212,255,0.4)] transition-all duration-300 cursor-pointer">
+                      {news.image && (
+                        <div className="w-full h-14 rounded bg-cover bg-center mb-2" style={{ backgroundImage: `url(${news.image})` }} />
+                      )}
+                      <div className="text-[10px] text-[#00d4ff] mb-1 uppercase tracking-wider">{news.source}</div>
+                      <div className="text-[11px] text-[#e2e8f0] leading-relaxed line-clamp-3">{news.title}</div>
+                      <div className="text-[9px] text-[#94a3b8] mt-1">{news.time}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <div className="w-[200px] h-[200px] relative">
-                  <RevolvingGlobe mode="idle" />
+                <div className="w-full h-full relative">
+                  <GlobeCanvas mode="idle" />
                 </div>
-                <div className="mt-4 text-center">
+                <div className="absolute bottom-[15%] text-center">
                   <div className="text-xs text-[#00d4ff] opacity-40 tracking-widest uppercase">
                     {isTyping ? 'Processing...' : 'Standby'}
                   </div>
@@ -457,7 +441,7 @@ export default function Home() {
             )}
           </div>
 
-          {/* RIGHT CHAT PANEL */}
+          {/* Right Chat Panel */}
           <div className="w-[320px] border-l border-[rgba(0,212,255,0.1)] flex flex-col overflow-hidden bg-[rgba(18,24,45,0.4)]">
             <div className="px-3 py-2 border-b border-[rgba(0,212,255,0.1)] flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-[#48bb78] shadow-[0_0_6px_#48bb78]" />
@@ -494,7 +478,7 @@ export default function Home() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input inside chat panel */}
+            {/* Input */}
             <div className="p-2.5 border-t border-[rgba(0,212,255,0.1)]">
               <div className="flex gap-2">
                 <input
@@ -519,11 +503,9 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ─── BOTTOM NEWS STRIP ─── */}
+      {/* Bottom News Strip */}
       <div className="h-9 border-t border-[rgba(0,212,255,0.1)] flex items-center px-4 gap-4 overflow-hidden bg-[rgba(18,24,45,0.8)] shrink-0">
-        <div className="text-[10px] text-[#00d4ff] font-semibold whitespace-nowrap shrink-0">
-          {today}
-        </div>
+        <div className="text-[10px] text-[#00d4ff] font-semibold whitespace-nowrap shrink-0">{today}</div>
         <div className="flex-1 overflow-hidden relative">
           <div className="flex gap-6 animate-[scrollNews_40s_linear_infinite] whitespace-nowrap text-[10px]">
             {[...demoNews, ...demoNews].map((news, i) => (
@@ -540,14 +522,6 @@ export default function Home() {
           FREE TIER · 3/5 LEFT
         </div>
       </div>
-
-      {/* Inline keyframes */}
-      <style jsx>{`
-        @keyframes scrollNews {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-      `}</style>
     </div>
   );
 }
