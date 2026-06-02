@@ -299,31 +299,31 @@ export default function Home() {
     }
 
     try {
-      const response = await fetch('/api/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: userMsg.text }),
       });
 
-      if (!response.ok) throw new Error('API error');
+      if (!response.ok) throw new Error("API error");
       const data = await response.json();
 
       const botMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: "bot",
-        text: data.response || data.text || "I've processed your request. The data is now available on the dashboard.",
+        text: data.response || data.text || "I have processed your request. The data is now available on the dashboard.",
       };
       setMessages((prev) => [...prev, botMsg]);
     } catch (err) {
       let fallback = "";
       if (text.includes("news") || text.includes("america")) {
-        fallback = "Wait a minute, let me check the latest headlines for you... Alright, here's what I found: The Federal Reserve is signaling potential rate cuts in Q3 2026 as CPI drops to 2.88%. Energy price stabilization is the primary driver. I've marked the key stories on the globe for you — check the cards above.";
+        fallback = "Wait a minute, let me check the latest headlines for you... Alright, here is what I found: The Federal Reserve is signaling potential rate cuts in Q3 2026 as CPI drops to 2.88%. Energy price stabilization is the primary driver. I have marked the key stories on the globe for you — check the cards above.";
       } else if (text.includes("inflation") || text.includes("cpi")) {
-        fallback = "Give me a second to pull the latest inflation data... Okay, here's the picture: Current US Headline CPI stands at 2.88% YoY, with a 12-month forecast of 2.61%. The trend shows disinflation continuing, though core services remain sticky. Risk score is 14/100 indicating low volatility. I've opened the inflation dashboard for you — click through the country tabs for more detail.";
+        fallback = "Give me a second to pull the latest inflation data... Okay, here is the picture: Current US Headline CPI stands at 2.88% YoY, with a 12-month forecast of 2.61%. The trend shows disinflation continuing, though core services remain sticky. Risk score is 14/100 indicating low volatility. I have opened the inflation dashboard for you — click through the country tabs for more detail.";
       } else if (text.includes("hello") || text.includes("hi") || text.includes("hey")) {
-        fallback = "Hey there! EcoAgent v2.4 here. I'm ready to help with inflation forecasts, global market news, economic indicators, or anything finance-related. What would you like to dive into today?";
+        fallback = "Hey there! EcoAgent v2.4 here. I am ready to help with inflation forecasts, global market news, economic indicators, or anything finance-related. What would you like to dive into today?";
       } else {
-        fallback = `Let me check on that for you... "${userMsg.text}" — interesting query. Based on current global economic indicators, I'd recommend checking our inflation dashboard for detailed metrics or asking for region-specific news. What area are you most interested in?`;
+        fallback = `Let me check on that for you... "${userMsg.text}" — interesting query. Based on current global economic indicators, I would recommend checking our inflation dashboard for detailed metrics or asking for region-specific news. What area are you most interested in?`;
       }
 
       const botMsg: Message = {
@@ -434,7 +434,7 @@ export default function Home() {
                 </div>
                 <div className="absolute bottom-[15%] text-center">
                   <div className="text-xs text-[#00d4ff] opacity-40 tracking-widest uppercase">
-                    {isTyping ? 'Processing...' : 'Standby'}
+                    {isTyping ? "Processing..." : "Standby"}
                   </div>
                 </div>
               </div>
