@@ -1,84 +1,28 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-* { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  background: #080d1a;
-  color: #e2e8f0;
-  font-family: 'JetBrains Mono', monospace;
-  overflow: hidden;
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-.glass {
-  background: rgba(0, 212, 255, 0.05);
-  border: 1px solid rgba(0, 212, 255, 0.15);
-  backdrop-filter: blur(12px);
+html, body {
+  height: 100%;
+  background: #080c10;
+  color: #c8d8e8;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  -webkit-font-smoothing: antialiased;
 }
 
-.glow { box-shadow: 0 0 20px rgba(0, 212, 255, 0.3); }
-.text-glow { text-shadow: 0 0 10px rgba(0, 212, 255, 0.8); }
-
-@keyframes wave {
-  0%, 100% { transform: scaleY(0.3); }
-  50% { transform: scaleY(1); }
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
 }
 
-@keyframes ping-slow {
-  0% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(2.5); opacity: 0; }
+a {
+  color: inherit;
 }
 
-@keyframes spin-slow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.animate-wave { animation: wave 1s ease-in-out infinite; }
-.animate-spin-slow { animation: spin-slow 20s linear infinite; }
-
-@keyframes rotate-slow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@keyframes rotate-fast-reverse {
-  from { transform: rotate(360deg); }
-  to { transform: rotate(0deg); }
-}
-
-@keyframes pulse-ring {
-  0%, 100% { opacity: 0.7; stroke-width: 1.5px; }
-  50% { opacity: 1; stroke-width: 4px; filter: drop-shadow(0 0 8px #00ffff); }
-}
-
-@keyframes core-pulse {
-  0%, 100% { r: 10; opacity: 1; }
-  50% { r: 15; opacity: 0.6; }
-}
-
-@keyframes ping-ring {
-  0% { r: 10; opacity: 0.8; }
-  100% { r: 50; opacity: 0; }
-}
-
-.rotate-slow { animation: rotate-slow 8s linear infinite; transform-origin: 150px 150px; }
-.rotate-fast-reverse { animation: rotate-fast-reverse 2s linear infinite; transform-origin: 150px 150px; }
-.thinking .pulse-ring { animation: pulse-ring 0.8s ease-in-out infinite; }
-.thinking .core-pulse { animation: core-pulse 0.6s ease-in-out infinite; }
-.ping-ring { animation: ping-ring 2s ease-out infinite; transform-origin: center; }
-
-.arc-segment {
-  stroke-dasharray: 30 50;
-  animation: glow-pulse 2s ease-in-out infinite;
-}
-
-@keyframes glow-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.8; }
-}
-@keyframes scrollNews {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+input {
+  font-family: inherit;
 }
