@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd ecoagent-frontend && npm run build",
+  "outputDirectory": "ecoagent-frontend/.next",
+  "installCommand": "cd ecoagent-frontend && npm install",
+  "framework": "nextjs"
+}
