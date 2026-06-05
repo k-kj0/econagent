@@ -552,7 +552,7 @@ export default function Home() {
         )}
 
         {/* Text input + mic button */}
-        <form onSubmit={handleTextSubmit} style={{ display: "flex", gap: 0, padding: "12px 20px", alignItems: "center", gap: 10 }}>
+        <form onSubmit={handleTextSubmit} style={{ display: "flex", padding: "12px 20px", alignItems: "center", gap: 10 }}>
           {/* Mic button */}
           <button type="button" onClick={() => {
             if (listening) return;
