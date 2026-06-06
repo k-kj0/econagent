@@ -5,55 +5,154 @@ import google.generativeai as genai
 import httpx
 import os
 import json
+import re
 
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
-model = genai.GenerativeModel("gemini-1.5-flash")
+# Configure Gemini
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
+NEWS_KEY = os.environ.get("NEWS_API_KEY", "")
+GNEWS_KEY = os.environ.get("GNEWS_API_KEY", "")
 
-NEWS_API_KEY = os.environ.get("NEWS_API_KEY", "")
-YT_API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
+    model = genai.GenerativeModel("gemini-1.5-flash")
+else:
+    model = None
 
-app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app = FastAPI(title="EcoAgent Backend")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class Query(BaseModel):
     text: str
 
 @app.get("/")
 def root():
-    return {"status": "EcoAgent online"}
+    return {"status": "EcoAgent online", "gemini": bool(GEMINI_KEY), "news": bool(NEWS_KEY or GNEWS_KEY)}
 
 @app.post("/ask")
 async def ask(query: Query):
     news_cards = []
     news_text = ""
-    try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            r = await client.get(f"https://newsapi.org/v2/top-headlines?language=en&pageSize=5&apiKey={NEWS_API_KEY}")
-        articles = r.json().get("articles", [])
-        news_cards = [{"headline": a.get("title",""), "source": a.get("source",{}).get("name",""), "url": a.get("url",""), "image": a.get("urlToImage","")} for a in articles[:5]]
-        news_text = "\n".join([f"- {c['headline']} ({c['source']})" for c in news_cards])
-    except:
-        news_text = "No live news available."
 
-    yt_links = []
-    try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            yr = await client.get(f"https://www.googleapis.com/youtube/v3/search?part=snippet&q={query.text}&type=video&maxResults=3&key={YT_API_KEY}")
-        yt_links = [{"title": i["snippet"]["title"], "url": f"https://youtube.com/watch?v={i['id']['videoId']}", "thumbnail": i["snippet"]["thumbnails"]["default"]["url"]} for i in yr.json().get("items", [])]
-    except:
-        pass
+    # Fetch news — try NewsAPI first, fallback GNews
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        if NEWS_KEY:
+            try:
+                r = await client.get(
+                    "https://newsapi.org/v2/top-headlines",
+                    params={"language": "en", "pageSize": 6, "apiKey": NEWS_KEY, "q": query.text[:50]}
+                )
+                articles = r.json().get("articles", [])
+                if not articles:
+                    # fallback to general top headlines
+                    r2 = await client.get(
+                        "https://newsapi.org/v2/top-headlines",
+                        params={"language": "en", "pageSize": 6, "apiKey": NEWS_KEY, "category": "business"}
+                    )
+                    articles = r2.json().get("articles", [])
+                news_cards = [
+                    {
+                        "headline": a.get("title", ""),
+                        "source": a.get("source", {}).get("name", "News"),
+                        "url": a.get("url", ""),
+                        "image": a.get("urlToImage", ""),
+                    }
+                    for a in articles[:6]
+                    if a.get("title") and "[Removed]" not in a.get("title", "")
+                ]
+                news_text = "\n".join(f"- {c['headline']} ({c['source']})" for c in news_cards)
+            except Exception as e:
+                news_text = f"News fetch error: {e}"
 
-    prompt = f"""You are EcoAgent, elite global intelligence AI. Address user as Boss.
-Query: {query.text}
-Live news: {news_text}
-Return ONLY valid JSON no markdown:
-{{"speech":"Boss, [2-3 sentences]","countries":["US"],"prediction":"one sentence","sources":["NewsAPI"]}}"""
+        if not news_cards and GNEWS_KEY:
+            try:
+                gr = await client.get(
+                    "https://gnews.io/api/v4/top-headlines",
+                    params={"lang": "en", "max": 6, "apikey": GNEWS_KEY, "q": query.text[:50]}
+                )
+                articles = gr.json().get("articles", [])
+                news_cards = [
+                    {
+                        "headline": a.get("title", ""),
+                        "source": a.get("source", {}).get("name", "News"),
+                        "url": a.get("url", ""),
+                        "image": a.get("image", ""),
+                    }
+                    for a in articles[:6]
+                ]
+                news_text = "\n".join(f"- {c['headline']} ({c['source']})" for c in news_cards)
+            except Exception as e:
+                news_text = f"GNews fetch error: {e}"
 
-    try:
-        resp = model.generate_content(prompt)
-        raw = resp.text.strip().lstrip("```json").lstrip("```").rstrip("```")
-        ai_data = json.loads(raw)
-    except Exception as e:
-        ai_data = {"speech": f"Boss, processing error: {e}", "countries": [], "prediction": "", "sources": []}
+    if not news_text:
+        news_text = "No live news available — configure NEWS_API_KEY or GNEWS_API_KEY."
 
-    return {**ai_data, "news_cards": news_cards, "yt_links": yt_links}
+    # Gemini call
+    system_prompt = """You are EcoAgent, an elite economic intelligence AI. 
+Your personality: confident, concise, like a Bloomberg anchor. Address the user as Boss.
+
+Rules:
+- Always start with "Boss,"
+- Be specific with data when available — mention real numbers, percentages, country names
+- Cite your sources inline
+- Return ONLY valid JSON, no markdown fences, no extra text
+
+JSON schema:
+{
+  "speech": "Boss, [2-4 sentences with real analysis. Be specific about countries, figures, trends]",
+  "countries": ["US", "UK", "CN"],
+  "prediction": "One forward-looking sentence about what to watch next.",
+  "sources": ["Bloomberg", "Reuters", "Federal Reserve"]
+}"""
+
+    user_prompt = f"""User query: {query.text}
+
+Live news feed:
+{news_text}
+
+Respond as EcoAgent with real economic intelligence. Extract country codes for any countries mentioned."""
+
+    if model:
+        try:
+            resp = model.generate_content(
+                f"{system_prompt}\n\n{user_prompt}",
+                generation_config={"temperature": 0.7, "max_output_tokens": 400}
+            )
+            raw = resp.text.strip()
+            # Strip any markdown fences if Gemini added them
+            raw = re.sub(r"```json\s*", "", raw)
+            raw = re.sub(r"```\s*", "", raw)
+            raw = raw.strip()
+            ai_data = json.loads(raw)
+        except json.JSONDecodeError:
+            # If JSON parse fails, extract the text and wrap it
+            speech_text = resp.text.strip() if model else "Error"
+            ai_data = {
+                "speech": speech_text[:500] if speech_text else "Boss, I encountered a processing error.",
+                "countries": ["US"],
+                "prediction": "Monitor developments closely.",
+                "sources": ["EcoAgent"],
+            }
+        except Exception as e:
+            ai_data = {
+                "speech": f"Boss, Gemini API error: {str(e)[:100]}. Check GEMINI_API_KEY environment variable.",
+                "countries": [],
+                "prediction": "",
+                "sources": [],
+            }
+    else:
+        ai_data = {
+            "speech": "Boss, GEMINI_API_KEY is not configured. Add it to your Railway/Vercel environment variables to activate full intelligence.",
+            "countries": ["US"],
+            "prediction": "Configure API keys to unlock real-time briefings.",
+            "sources": ["EcoAgent System"],
+        }
+
+    return {
+        **ai_data,
+        "newsCards": news_cards,
+    }
