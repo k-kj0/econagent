@@ -302,8 +302,8 @@ export default function Page() {
   const [sessionSecs, setSessionSecs] = useState(0);
   const [wakeActive, setWakeActive] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const recRef = useRef<SpeechRecognition | null>(null);
-  const wakeRecRef = useRef<SpeechRecognition | null>(null);
+  const recRef = useRef<any>(null);
+  const wakeRecRef = useRef<any>(null);
   const wakeLoopRef = useRef(true);
 
   const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? "";
@@ -395,11 +395,11 @@ export default function Page() {
 
     function startWake() {
       if (!active || !wakeLoopRef.current) return;
-      const rec: SpeechRecognition = new SR();
+      const rec = new SR();
       rec.continuous = false;
       rec.interimResults = false;
       rec.lang = "en-US";
-      rec.onresult = async (e: SpeechRecognitionEvent) => {
+      rec.onresult = async (e: any) => {
         const said = e.results[0][0].transcript.toLowerCase().trim();
         if (said.includes("hey eco") || said.includes("eco")) {
           setWakeActive(true);
@@ -421,11 +421,11 @@ export default function Page() {
 
     function startCommandListen() {
       if (!active) return;
-      const rec: SpeechRecognition = new SR();
+      const rec = new SR();
       rec.continuous = false;
       rec.interimResults = false;
       rec.lang = "en-US";
-      rec.onresult = (e: SpeechRecognitionEvent) => {
+      rec.onresult = (e: any) => {
         const said = e.results[0][0].transcript;
         askEco(said);
       };
@@ -455,11 +455,11 @@ export default function Page() {
       setListening(false);
       return;
     }
-    const rec: SpeechRecognition = new SR();
+    const rec = new SR();
     rec.continuous = false;
     rec.interimResults = false;
     rec.lang = "en-US";
-    rec.onresult = (e: SpeechRecognitionEvent) => {
+    rec.onresult = (e: any) => {
       askEco(e.results[0][0].transcript);
     };
     rec.onend = () => setListening(false);
