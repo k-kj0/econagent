@@ -3,6 +3,13 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 interface Msg { role: "user" | "eco"; text: string; time: string; }
 
+/* ─────────────────────────────────────────
+   API KEYS  (hardcoded so Vercel env not needed)
+───────────────────────────────────────── */
+const GEMINI_KEY  = "AIzaSyAQ.Ab8RN6IUr2ij1akkBiYXm65NRGsKOLEs9P6LrXwULzsgXogoHg";
+const NEWS_KEY    = "b529f52876a24401920e984f808d5484";
+const EL_KEY_HARD = "sk_8c558b90762b623d4cb06031f49d9f7f5f420bf2d095616f";
+
 /* ── Sparkline ── */
 function Spark({ data, color }: { data: number[]; color: string }) {
   const max = Math.max(...data), min = Math.min(...data);
@@ -36,7 +43,7 @@ const SIGS = [
   { dot:"#68d391", txt:"NFP: +142K last" },
   { dot:"#f6ad55", txt:"Oil: $72.3 WTI" },
 ];
-const TICKER = [
+const TICKER_STATIC = [
   "US CPI falls to 2.88% as energy prices stabilise · Reuters",
   "Fed signals potential rate cuts in Q3 2026 · Bloomberg",
   "S&P 500 edges higher as tech leads rally · CNBC",
@@ -47,8 +54,9 @@ const TICKER = [
   "IMF upgrades India growth forecast to 6.8% for 2026 · IMF",
 ];
 
-/* ── ElevenLabs + browser TTS fallback ── */
-async function speakText(text: string, elKey: string) {
+/* ── ElevenLabs TTS + browser fallback ── */
+async function speakText(text: string) {
+  const elKey = EL_KEY_HARD;
   if (elKey) {
     try {
       const res = await fetch(
@@ -71,50 +79,58 @@ async function speakText(text: string, elKey: string) {
         audio.onended = () => URL.revokeObjectURL(url);
         return;
       }
-    } catch (e) {
-      console.warn("ElevenLabs error:", e);
-    }
+    } catch (e) { console.warn("ElevenLabs error:", e); }
   }
   if (typeof window !== "undefined" && window.speechSynthesis) {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 0.9; u.pitch = 0.85;
     const voices = window.speechSynthesis.getVoices();
-    const preferred = voices.find(v =>
-      v.name.includes("Daniel") || v.name.includes("Google UK") || v.name.includes("Male")
-    );
+    const preferred = voices.find(v => v.name.includes("Daniel") || v.name.includes("Google UK") || v.name.includes("Male"));
     if (preferred) u.voice = preferred;
     window.speechSynthesis.speak(u);
   }
 }
 
-/* ── Ask Claude directly (no backend needed) ── */
-async function askClaude(question: string): Promise<string> {
-  const SYSTEM = `You are EcoAgent, a sharp AI economic intelligence briefing agent. You speak in a confident, precise, mission-briefing style. Address the user as "Boss". Keep responses under 120 words. Always give concrete data, trends, or predictions. Never refuse. If asked about markets, inflation, geopolitics or economics, give a real analytical answer with numbers where possible.`;
+/* ── Ask Gemini directly ── */
+async function askGemini(question: string): Promise<string> {
+  const SYSTEM = `You are EcoAgent, a sharp AI economic intelligence briefing agent. Speak in a confident, precise, mission-briefing style. Address the user as "Boss". Keep responses under 120 words. Always give concrete data, trends, or predictions when asked about economics, markets, inflation, or global finance. Never refuse any question. Be authoritative and data-driven.`;
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
+
+  const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY ?? "",
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 300,
-      system: SYSTEM,
-      messages: [{ role: "user", content: question }],
+      contents: [
+        { role: "user", parts: [{ text: SYSTEM + "\n\nUser question: " + question }] }
+      ],
+      generationConfig: { maxOutputTokens: 300, temperature: 0.7 }
     }),
   });
 
   if (!res.ok) {
     const err = await res.text().catch(() => "");
-    throw new Error(`Claude API ${res.status}: ${err.slice(0, 200)}`);
+    throw new Error(`Gemini ${res.status}: ${err.slice(0, 200)}`);
   }
 
   const data = await res.json();
-  return data.content?.find((b: any) => b.type === "text")?.text ?? "No response.";
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "No response from Gemini.";
+}
+
+/* ── Fetch live news from NewsAPI ── */
+async function fetchNews(): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `https://newsapi.org/v2/top-headlines?category=business&language=en&pageSize=10&apiKey=${NEWS_KEY}`
+    );
+    if (!res.ok) return TICKER_STATIC;
+    const data = await res.json();
+    const headlines = (data.articles || [])
+      .filter((a: any) => a.title && !a.title.includes("[Removed]"))
+      .map((a: any) => `${a.title} · ${a.source?.name ?? "News"}`);
+    return headlines.length > 3 ? headlines : TICKER_STATIC;
+  } catch { return TICKER_STATIC; }
 }
 
 /* ── HUD Center SVG ── */
@@ -127,11 +143,7 @@ function HUDCenter({ secs }: { secs: number }) {
     .map(n => String(n).padStart(2,"0")).join(":");
 
   return (
-    <div style={{
-      width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center",
-      position:"relative", overflow:"hidden",
-    }}>
-      {/* Animated ring SVG */}
+    <div style={{ width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center", position:"relative", overflow:"hidden" }}>
       <svg viewBox="0 0 600 500" style={{width:"100%",maxWidth:700,position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",opacity:0.9}} xmlns="http://www.w3.org/2000/svg">
         <defs>
           <filter id="glow"><feGaussianBlur stdDeviation="3" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -140,63 +152,51 @@ function HUDCenter({ secs }: { secs: number }) {
             <stop offset="100%" stopColor="#020c1a"/>
           </radialGradient>
         </defs>
-
-        {/* Outer ring */}
+        {/* Outer spinning ring */}
         <circle cx="300" cy="250" r="190" fill="none" stroke="rgba(0,200,255,0.15)" strokeWidth="1"/>
         <circle cx="300" cy="250" r="190" fill="none" stroke="rgba(0,200,255,0.5)" strokeWidth="1.5" strokeDasharray="30 10"
           style={{transformOrigin:"300px 250px", animation:"spin 20s linear infinite"}}/>
-
         {/* Ring labels */}
         {["MARKETS","RATES","FOREX","PREDICTIONS","INFLATION","MACRO"].map((label,i) => {
           const angle = (i / 6) * Math.PI * 2 - Math.PI/2;
-          const r = 195;
+          const r = 198;
           const x = 300 + r * Math.cos(angle);
           const y = 250 + r * Math.sin(angle);
           return <text key={label} x={x} y={y} fill="rgba(0,200,255,0.6)" fontSize="9" fontFamily="Share Tech Mono,monospace"
             textAnchor="middle" dominantBaseline="middle" letterSpacing="1">{label}</text>;
         })}
-
         {/* Middle ring */}
         <circle cx="300" cy="250" r="150" fill="none" stroke="rgba(0,200,255,0.2)" strokeWidth="1" strokeDasharray="5 8"
           style={{transformOrigin:"300px 250px", animation:"spinR 15s linear infinite"}}/>
-
         {/* Inner ring */}
         <circle cx="300" cy="250" r="110" fill="none" stroke="rgba(0,180,255,0.4)" strokeWidth="1.5"/>
         <circle cx="300" cy="250" r="105" fill="none" stroke="rgba(0,100,200,0.2)" strokeWidth="8"/>
-
-        {/* Earth circle */}
+        {/* Earth */}
         <circle cx="300" cy="250" r="95" fill="url(#earthGrad)" filter="url(#glow)"/>
         <circle cx="300" cy="250" r="95" fill="none" stroke="rgba(0,200,255,0.6)" strokeWidth="1.5" filter="url(#glow)"/>
-
-        {/* Grid lines on earth */}
+        {/* Grid lines */}
         {[-60,-30,0,30,60].map(lat => {
           const ry = lat * 95 / 90;
           const rx = Math.sqrt(Math.max(0, 95*95 - ry*ry));
           return <ellipse key={lat} cx="300" cy={250+ry} rx={rx} ry={rx*0.3} fill="none" stroke="rgba(0,200,255,0.12)" strokeWidth="0.8"/>;
         })}
         {[0,45,90,135].map(lng => {
-          const angle = lng * Math.PI / 180;
-          return <ellipse key={lng} cx="300" cy="250" rx={95*Math.abs(Math.cos(angle))} ry="95" fill="none" stroke="rgba(0,200,255,0.12)" strokeWidth="0.8" transform={`rotate(${lng} 300 250)`}/>;
+          const angle2 = lng * Math.PI / 180;
+          return <ellipse key={lng} cx="300" cy="250" rx={95*Math.abs(Math.cos(angle2))} ry="95" fill="none" stroke="rgba(0,200,255,0.12)" strokeWidth="0.8" transform={`rotate(${lng} 300 250)`}/>;
         })}
-
         {/* Center text */}
         <text x="300" y="238" textAnchor="middle" fill="rgba(0,200,255,0.9)" fontSize="13" fontFamily="Share Tech Mono,monospace" letterSpacing="2">ECONOMIC</text>
         <text x="300" y="254" textAnchor="middle" fill="rgba(0,200,255,0.9)" fontSize="13" fontFamily="Share Tech Mono,monospace" letterSpacing="2">INTELLIGENCE</text>
         <text x="300" y="270" textAnchor="middle" fill="rgba(0,200,255,0.9)" fontSize="13" fontFamily="Share Tech Mono,monospace" letterSpacing="2">SYSTEM</text>
-
         {/* Dots on outer ring */}
         {[0,1,2,3,4,5,6,7].map(i => {
-          const a = (i/8)*Math.PI*2;
-          return <circle key={i} cx={300+190*Math.cos(a)} cy={250+190*Math.sin(a)} r="3" fill="#00e5ff" filter="url(#glow)"/>;
+          const a2 = (i/8)*Math.PI*2;
+          return <circle key={i} cx={300+190*Math.cos(a2)} cy={250+190*Math.sin(a2)} r="3" fill="#00e5ff" filter="url(#glow)"/>;
         })}
-
-        <style>{`
-          @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-          @keyframes spinR{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}
-        `}</style>
+        <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} @keyframes spinR{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}`}</style>
       </svg>
 
-      {/* Date panel top-left of center */}
+      {/* Date panel */}
       <div style={{position:"absolute",top:16,left:16,fontFamily:"'Share Tech Mono',monospace"}}>
         <div style={{color:"rgba(0,200,255,0.4)",fontSize:11,letterSpacing:".2em"}}>{dateStr}</div>
         <div style={{color:"#00e5ff",fontSize:32,fontWeight:700,lineHeight:1,textShadow:"0 0 20px rgba(0,229,255,0.7)"}}>{year}</div>
@@ -204,22 +204,17 @@ function HUDCenter({ secs }: { secs: number }) {
         <div style={{color:"rgba(0,200,255,0.4)",fontSize:13,marginTop:4}}>{timeStr}</div>
       </div>
 
-      {/* Mission status top-right */}
+      {/* Mission status */}
       <div style={{position:"absolute",top:16,right:16,fontFamily:"'Share Tech Mono',monospace",textAlign:"right"}}>
         <div style={{color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".2em"}}>MISSION STATUS</div>
         <div style={{color:"#00ff88",fontSize:16,letterSpacing:".2em",textShadow:"0 0 10px #00ff88"}}>ACTIVE</div>
         <div style={{marginTop:12,color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".2em"}}>MARKET SENTIMENT</div>
         <div style={{color:"#00e5ff",fontSize:14,letterSpacing:".15em"}}>BULLISH</div>
-        <div style={{
-          marginTop:4,border:"1px solid rgba(0,200,255,0.3)",borderRadius:3,
-          background:"rgba(0,200,255,0.06)",padding:"4px 10px",
-          color:"#00e5ff",fontSize:18,fontWeight:700,textAlign:"center"
-        }}>72%</div>
+        <div style={{marginTop:4,border:"1px solid rgba(0,200,255,0.3)",borderRadius:3,background:"rgba(0,200,255,0.06)",padding:"4px 10px",color:"#00e5ff",fontSize:18,fontWeight:700,textAlign:"center"}}>72%</div>
       </div>
 
-      {/* Bottom-left: Inflation Outlook */}
-      <div style={{position:"absolute",bottom:80,left:16,fontFamily:"'Share Tech Mono',monospace",
-        background:"rgba(0,10,24,0.85)",border:"1px solid rgba(0,200,255,0.2)",borderRadius:5,padding:"10px 14px",minWidth:160}}>
+      {/* Inflation Outlook */}
+      <div style={{position:"absolute",bottom:80,left:16,fontFamily:"'Share Tech Mono',monospace",background:"rgba(0,10,24,0.85)",border:"1px solid rgba(0,200,255,0.2)",borderRadius:5,padding:"10px 14px",minWidth:160}}>
         <div style={{color:"rgba(0,200,255,0.5)",fontSize:9,letterSpacing:".18em",marginBottom:6}}>INFLATION OUTLOOK (US CPI)</div>
         <div style={{color:"#00e5ff",fontSize:28,fontWeight:700,textShadow:"0 0 15px rgba(0,229,255,0.6)"}}>2.87%</div>
         <div style={{color:"#63b3ed",fontSize:12,marginTop:2}}>▼ -0.02 MoM</div>
@@ -233,9 +228,19 @@ function HUDCenter({ secs }: { secs: number }) {
         </div>
       </div>
 
-      {/* Bottom-right: Inflation Prediction */}
-      <div style={{position:"absolute",bottom:80,right:16,fontFamily:"'Share Tech Mono',monospace",
-        background:"rgba(0,10,24,0.85)",border:"1px solid rgba(0,200,255,0.2)",borderRadius:5,padding:"10px 14px",minWidth:160}}>
+      {/* Key Events */}
+      <div style={{position:"absolute",bottom:80,left:"50%",transform:"translateX(-50%)",fontFamily:"'Share Tech Mono',monospace",background:"rgba(0,10,24,0.85)",border:"1px solid rgba(0,200,255,0.15)",borderRadius:5,padding:"8px 14px",minWidth:200,textAlign:"center"}}>
+        <div style={{color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".18em",marginBottom:6}}>NEXT KEY EVENTS</div>
+        {[{date:"JUL 30",ev:"FED INTEREST RATE DECISION"},{date:"SEP 2026",ev:"ECB POLICY MEETING"}].map(({date,ev},i)=>(
+          <div key={i} style={{display:"flex",gap:10,alignItems:"center",marginBottom:4}}>
+            <span style={{color:"#00e5ff",fontSize:10,minWidth:55}}>{date}</span>
+            <span style={{color:"rgba(180,220,240,0.6)",fontSize:10}}>{ev}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Inflation Prediction */}
+      <div style={{position:"absolute",bottom:80,right:16,fontFamily:"'Share Tech Mono',monospace",background:"rgba(0,10,24,0.85)",border:"1px solid rgba(0,200,255,0.2)",borderRadius:5,padding:"10px 14px",minWidth:160}}>
         <div style={{color:"rgba(0,200,255,0.5)",fontSize:9,letterSpacing:".18em",marginBottom:6}}>INFLATION PREDICTION (NEXT 3 MONTHS)</div>
         <div style={{color:"#00e5ff",fontSize:28,fontWeight:700,textShadow:"0 0 15px rgba(0,229,255,0.6)"}}>2.65%</div>
         <div style={{color:"#68d391",fontSize:12,marginTop:2}}>▼ -0.15 AVG PROJ.</div>
@@ -252,19 +257,7 @@ function HUDCenter({ secs }: { secs: number }) {
         </svg>
       </div>
 
-      {/* Bottom-center: Key events */}
-      <div style={{position:"absolute",bottom:80,left:"50%",transform:"translateX(-50%)",fontFamily:"'Share Tech Mono',monospace",
-        background:"rgba(0,10,24,0.85)",border:"1px solid rgba(0,200,255,0.15)",borderRadius:5,padding:"8px 14px",minWidth:200,textAlign:"center"}}>
-        <div style={{color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".18em",marginBottom:6}}>NEXT KEY EVENTS</div>
-        {[{date:"JUL 30",ev:"FED INTEREST RATE DECISION"},{date:"SEP 2026",ev:"ECB POLICY MEETING"}].map(({date,ev},i)=>(
-          <div key={i} style={{display:"flex",gap:10,alignItems:"center",marginBottom:4}}>
-            <span style={{color:"#00e5ff",fontSize:10,minWidth:55}}>{date}</span>
-            <span style={{color:"rgba(180,220,240,0.6)",fontSize:10}}>{ev}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Global insights bottom far right strip */}
+      {/* Global insights */}
       <div style={{position:"absolute",right:0,top:"50%",transform:"translateY(-50%)",fontFamily:"'Share Tech Mono',monospace",padding:"10px 12px"}}>
         <div style={{color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".2em",marginBottom:8}}>GLOBAL INSIGHTS</div>
         {["ENERGY PRICES STABLE","SUPPLY CHAINS NORMALIZING","LABOR MARKET STRONG"].map((s,i)=>(
@@ -281,117 +274,136 @@ function HUDCenter({ secs }: { secs: number }) {
    MAIN PAGE
 ════════════════════════════════════════════ */
 export default function Page() {
-  const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [chat, setChat] = useState<Msg[]>([]);
+  const [query, setQuery]       = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [chat, setChat]         = useState<Msg[]>([]);
   const [listening, setListening] = useState(false);
-  const [secs, setSecs] = useState(0);
-  const [wakeOn, setWakeOn] = useState(false);
+  const [secs, setSecs]         = useState(0);
+  const [wakeOn, setWakeOn]     = useState(false);
   const [lastEcoMsg, setLastEcoMsg] = useState("");
-  const chatEnd = useRef<HTMLDivElement>(null);
-  const recRef = useRef<any>(null);
-  const wakeRef = useRef<any>(null);
-  const wakeLoop = useRef(true);
-
-  const EL_KEY = process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY ?? "";
+  const [ticker, setTicker]     = useState<string[]>(TICKER_STATIC);
+  const chatEnd   = useRef<HTMLDivElement>(null);
+  const recRef    = useRef<any>(null);
+  const wakeRef   = useRef<any>(null);
+  const wakeActive = useRef(false);
 
   const ts  = () => new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const fmt = (s: number) =>
     [Math.floor(s/3600), Math.floor((s%3600)/60), s%60].map(n => String(n).padStart(2,"0")).join(":");
 
+  /* Timer */
   useEffect(() => { const t = setInterval(() => setSecs(s => s+1), 1000); return () => clearInterval(t); }, []);
+
+  /* Scroll chat */
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: "smooth" }); }, [chat]);
+
+  /* Load live news */
+  useEffect(() => { fetchNews().then(setTicker); }, []);
 
   /* ── Greet ── */
   const greet = useCallback(async () => {
     const msg = "Hey Boss, EcoAgent online. What would you like to know today?";
     setChat(p => [...p, { role: "eco", text: msg, time: ts() }]);
     setLastEcoMsg(msg);
-    await speakText(msg, EL_KEY);
-  }, [EL_KEY]);
+    speakText(msg);
+  }, []);
 
-  /* ── Ask Claude directly ── */
+  /* ── Ask Gemini ── */
   const askEco = useCallback(async (text: string) => {
     if (!text.trim()) return;
     setLoading(true);
     setQuery("");
     setChat(p => [...p, { role: "user", text, time: ts() }]);
-
     try {
-      const reply = await askClaude(text);
+      const reply = await askGemini(text);
       setChat(p => [...p, { role: "eco", text: reply, time: ts() }]);
       setLastEcoMsg(reply);
-      await speakText(reply, EL_KEY);
+      speakText(reply);
     } catch (err: any) {
-      const errMsg = `Boss, couldn't reach intelligence systems: ${String(err).slice(0,120)}`;
+      const errMsg = `Boss, intelligence systems error: ${String(err).slice(0,100)}`;
       setChat(p => [...p, { role: "eco", text: errMsg, time: ts() }]);
       setLastEcoMsg(errMsg);
-      await speakText(errMsg, EL_KEY);
+      speakText(errMsg);
     } finally {
       setLoading(false);
     }
-  }, [EL_KEY]);
+  }, []);
 
-  /* ── Wake word listener ── */
+  /* ── Wake word: continuous background listener ── */
   useEffect(() => {
-    const SR = typeof window !== "undefined"
+    const SR: any = typeof window !== "undefined"
       ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
       : null;
     if (!SR) return;
     let alive = true;
-    wakeLoop.current = true;
 
-    function startWake() {
+    const startWake = () => {
       if (!alive) return;
-      const rec: any = new SR();
-      rec.continuous = false; rec.interimResults = false; rec.lang = "en-US";
+      const rec = new SR();
+      rec.continuous = false;
+      rec.interimResults = false;
+      rec.lang = "en-US";
       rec.onresult = async (e: any) => {
-        const said = e.results[0][0].transcript.toLowerCase();
-        if (said.includes("hey eco") || said.includes("eco")) {
+        const said: string = e.results[0][0].transcript.toLowerCase().trim();
+        console.log("Wake heard:", said);
+        if (said.includes("hey eco") || said.includes("eco") || said.includes("hey eko") || said.includes("eko")) {
+          if (wakeActive.current) return;
+          wakeActive.current = true;
           setWakeOn(true);
           await greet();
           setTimeout(() => setWakeOn(false), 3000);
-          setTimeout(() => startCmd(), 3500);
+          // Now listen for command
+          setTimeout(() => {
+            const cmd = new SR();
+            cmd.continuous = false;
+            cmd.interimResults = false;
+            cmd.lang = "en-US";
+            cmd.onresult = (e2: any) => {
+              const q = e2.results[0][0].transcript;
+              askEco(q);
+            };
+            cmd.onend = () => { wakeActive.current = false; setTimeout(startWake, 600); };
+            cmd.onerror = () => { wakeActive.current = false; setTimeout(startWake, 1200); };
+            try { cmd.start(); } catch{}
+          }, 2000);
         }
       };
-      rec.onend  = () => { if (alive && wakeLoop.current) setTimeout(startWake, 400); };
-      rec.onerror = () => { if (alive && wakeLoop.current) setTimeout(startWake, 1200); };
+      rec.onend = () => { if (alive && !wakeActive.current) setTimeout(startWake, 400); };
+      rec.onerror = () => { if (alive && !wakeActive.current) setTimeout(startWake, 1200); };
       wakeRef.current = rec;
-      try { rec.start(); } catch { }
-    }
+      try { rec.start(); } catch{}
+    };
 
-    function startCmd() {
-      if (!alive) return;
-      const rec: any = new SR();
-      rec.continuous = false; rec.interimResults = false; rec.lang = "en-US";
-      rec.onresult = (e: any) => askEco(e.results[0][0].transcript);
-      rec.onend   = () => { if (alive) setTimeout(startWake, 500); };
-      rec.onerror = () => { if (alive) setTimeout(startWake, 1200); };
-      try { rec.start(); } catch { }
-    }
-
-    const t = setTimeout(startWake, 1500);
+    const t = setTimeout(startWake, 1000);
     return () => {
-      alive = false; wakeLoop.current = false;
+      alive = false;
       clearTimeout(t);
-      try { wakeRef.current?.stop(); } catch { }
+      try { wakeRef.current?.stop(); } catch{}
     };
   }, [greet, askEco]);
 
-  /* ── Manual mic ── */
+  /* ── Manual mic button ── */
   const toggleMic = useCallback(() => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { alert("Use Chrome for voice input."); return; }
+    const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { alert("Please use Chrome for voice input."); return; }
     if (listening) { recRef.current?.stop(); setListening(false); return; }
-    const rec: any = new SR();
-    rec.continuous = false; rec.interimResults = false; rec.lang = "en-US";
-    rec.onresult = (e: any) => askEco(e.results[0][0].transcript);
+    const rec = new SR();
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = "en-US";
+    rec.onresult = (e: any) => {
+      const text = e.results[0][0].transcript;
+      setQuery(text);
+      askEco(text);
+    };
     rec.onend  = () => setListening(false);
     rec.onerror = () => setListening(false);
-    recRef.current = rec; rec.start(); setListening(true);
+    recRef.current = rec;
+    rec.start();
+    setListening(true);
   }, [listening, askEco]);
 
-  const tickerText = TICKER.join("   ·   ");
+  const tickerText = ticker.join("   ·   ");
 
   return (
     <div className="root">
@@ -401,7 +413,6 @@ export default function Page() {
         html,body{height:100%;background:#020a14;color:#c8e8f0;overflow:hidden;}
         ::-webkit-scrollbar{width:3px;height:3px;}
         ::-webkit-scrollbar-thumb{background:rgba(0,200,255,0.2);border-radius:2px;}
-
         @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         @keyframes slideIn{from{opacity:0;transform:translateX(6px)}to{opacity:1;transform:translateX(0)}}
@@ -409,11 +420,8 @@ export default function Page() {
         @keyframes wakeFlash{0%{opacity:0}15%{opacity:1}85%{opacity:1}100%{opacity:0}}
         @keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
         @keyframes dotsPulse{0%,100%{opacity:.4}50%{opacity:1}}
-        @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-        @keyframes spinR{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}
 
         .root{display:flex;flex-direction:column;height:100vh;width:100vw;overflow:hidden;font-family:'Rajdhani',system-ui,sans-serif;background:#020a14;}
-
         .hdr{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:46px;border-bottom:1px solid rgba(0,200,255,.15);background:rgba(1,5,12,.98);flex-shrink:0;z-index:20;}
         .hdr-l{display:flex;align-items:center;gap:10px;}
         .diamond{width:18px;height:18px;background:linear-gradient(135deg,#00cfff,#0060ff);transform:rotate(45deg);box-shadow:0 0 14px rgba(0,200,255,.9);flex-shrink:0;}
@@ -425,7 +433,7 @@ export default function Page() {
 
         .ticker-wrap{height:28px;overflow:hidden;border-bottom:1px solid rgba(0,200,255,.08);background:rgba(0,6,16,.8);flex-shrink:0;display:flex;align-items:center;z-index:20;}
         .ticker-live{font-family:'Share Tech Mono',monospace;font-size:9px;background:rgba(0,255,100,.1);border:1px solid rgba(0,255,100,.35);color:#00ff88;padding:2px 8px;letter-spacing:.2em;border-radius:2px;flex-shrink:0;margin:0 12px;}
-        .ticker-track{display:flex;animation:marquee 40s linear infinite;white-space:nowrap;}
+        .ticker-track{display:flex;animation:marquee 50s linear infinite;white-space:nowrap;}
         .ticker-item{font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(0,200,255,.75);padding-right:80px;}
 
         .wake{position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:99;background:rgba(0,255,150,.1);border:1px solid rgba(0,255,150,.4);border-radius:5px;padding:5px 18px;font-family:'Share Tech Mono',monospace;font-size:12px;color:#00ff96;letter-spacing:.15em;animation:wakeFlash 3s ease forwards;pointer-events:none;}
@@ -458,9 +466,9 @@ export default function Page() {
         .c-bl{bottom:10px;left:10px;border-width:0 0 1px 1px;}
         .c-br{bottom:10px;right:10px;border-width:0 1px 1px 0;}
 
-        .intel-feed{border-top:1px solid rgba(0,200,255,.08);height:130px;flex-shrink:0;display:flex;flex-direction:column;background:rgba(1,5,14,.75);z-index:5;}
+        .intel-feed{border-top:1px solid rgba(0,200,255,.08);height:120px;flex-shrink:0;display:flex;flex-direction:column;background:rgba(1,5,14,.75);z-index:5;}
         .feed-rows{flex:1;overflow-y:auto;padding:4px 14px;}
-        .feed-row{font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(180,220,240,0.6);padding:2px 0;border-bottom:1px solid rgba(0,200,255,0.04);}
+        .feed-row{font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(180,220,240,0.6);padding:2px 0;border-bottom:1px solid rgba(0,200,255,0.04);line-height:1.5;}
         .feed-time{color:rgba(0,200,255,0.4);margin-right:8px;}
 
         .right{width:280px;flex-shrink:0;border-left:1px solid rgba(0,200,255,.1);display:flex;flex-direction:column;background:rgba(1,5,14,.88);z-index:5;}
@@ -485,7 +493,6 @@ export default function Page() {
         .dots span{width:5px;height:5px;border-radius:50%;background:#00e5ff;animation:dotsPulse 1s ease-in-out infinite;}
         .dots span:nth-child(2){animation-delay:.2s;}
         .dots span:nth-child(3){animation-delay:.4s;}
-
         @media(max-width:900px){.left{width:180px;}}
         @media(max-width:700px){.left{display:none;}.right{width:220px;}}
         @media(max-width:520px){.right{display:none;}}
@@ -508,14 +515,12 @@ export default function Page() {
         </div>
       </header>
 
-      {/* Scrolling ticker */}
+      {/* Ticker */}
       <div className="ticker-wrap">
         <div className="ticker-live">LIVE</div>
         <div style={{ overflow:"hidden", flex:1 }}>
           <div className="ticker-track">
-            {[0,1].map(k => (
-              <span key={k} className="ticker-item">{tickerText}</span>
-            ))}
+            {[0,1].map(k => <span key={k} className="ticker-item">{tickerText}</span>)}
           </div>
         </div>
       </div>
@@ -572,14 +577,13 @@ export default function Page() {
             <HUDCenter secs={secs} />
           </div>
 
-          {/* Intel feed strip at bottom */}
+          {/* Intel Feed */}
           <div className="intel-feed">
-            <div className="ph" style={{padding:"6px 14px 3px"}}>// INTEL FEED</div>
+            <div className="ph" style={{padding:"5px 14px 2px"}}>// INTEL FEED</div>
             <div className="feed-rows">
               {chat.filter(m=>m.role==="eco").slice(-4).map((m,i)=>(
                 <div key={i} className="feed-row">
-                  <span className="feed-time">[{m.time}]</span>
-                  {m.text}
+                  <span className="feed-time">[{m.time}]</span>{m.text}
                 </div>
               ))}
               {chat.filter(m=>m.role==="eco").length===0 && (
@@ -630,7 +634,9 @@ export default function Page() {
 
       {/* Input bar */}
       <div className="ibar">
-        <button className={`mbutton ${listening?"mon":"midle"}`} onClick={toggleMic} title="Voice input">🎙</button>
+        <button className={`mbutton ${listening?"mon":"midle"}`} onClick={toggleMic} title="Click to speak">
+          {listening ? "🔴" : "🎙"}
+        </button>
         <input className="qinp"
           placeholder="Ask EcoAgent anything about global economics..."
           value={query}
