@@ -1,8 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 
-interface NewsCard { headline: string; source: string; url: string; }
-interface EcoResponse { speech: string; countries: string[]; prediction: string; sources: string[]; newsCards: NewsCard[]; }
 interface Msg { role: "user" | "eco"; text: string; time: string; }
 
 /* ── Sparkline ── */
@@ -51,7 +49,6 @@ const TICKER = [
 
 /* ── ElevenLabs + browser TTS fallback ── */
 async function speakText(text: string, elKey: string) {
-  // Try ElevenLabs first
   if (elKey) {
     try {
       const res = await fetch(
@@ -78,7 +75,6 @@ async function speakText(text: string, elKey: string) {
       console.warn("ElevenLabs error:", e);
     }
   }
-  // Browser TTS fallback
   if (typeof window !== "undefined" && window.speechSynthesis) {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
@@ -92,24 +88,212 @@ async function speakText(text: string, elKey: string) {
   }
 }
 
+/* ── Ask Claude directly (no backend needed) ── */
+async function askClaude(question: string): Promise<string> {
+  const SYSTEM = `You are EcoAgent, a sharp AI economic intelligence briefing agent. You speak in a confident, precise, mission-briefing style. Address the user as "Boss". Keep responses under 120 words. Always give concrete data, trends, or predictions. Never refuse. If asked about markets, inflation, geopolitics or economics, give a real analytical answer with numbers where possible.`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY ?? "",
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 300,
+      system: SYSTEM,
+      messages: [{ role: "user", content: question }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text().catch(() => "");
+    throw new Error(`Claude API ${res.status}: ${err.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  return data.content?.find((b: any) => b.type === "text")?.text ?? "No response.";
+}
+
+/* ── HUD Center SVG ── */
+function HUDCenter({ secs }: { secs: number }) {
+  const now = new Date();
+  const day = now.toLocaleDateString("en-US", { weekday: "long" }).toUpperCase();
+  const dateStr = `${now.toLocaleDateString("en-US", { month: "long" }).toUpperCase()} ${now.getDate()}`;
+  const year = now.getFullYear();
+  const timeStr = [now.getHours(), now.getMinutes(), now.getSeconds()]
+    .map(n => String(n).padStart(2,"0")).join(":");
+
+  return (
+    <div style={{
+      width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center",
+      position:"relative", overflow:"hidden",
+    }}>
+      {/* Animated ring SVG */}
+      <svg viewBox="0 0 600 500" style={{width:"100%",maxWidth:700,position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",opacity:0.9}} xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="glow"><feGaussianBlur stdDeviation="3" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <radialGradient id="earthGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#0a2a4a"/>
+            <stop offset="100%" stopColor="#020c1a"/>
+          </radialGradient>
+        </defs>
+
+        {/* Outer ring */}
+        <circle cx="300" cy="250" r="190" fill="none" stroke="rgba(0,200,255,0.15)" strokeWidth="1"/>
+        <circle cx="300" cy="250" r="190" fill="none" stroke="rgba(0,200,255,0.5)" strokeWidth="1.5" strokeDasharray="30 10"
+          style={{transformOrigin:"300px 250px", animation:"spin 20s linear infinite"}}/>
+
+        {/* Ring labels */}
+        {["MARKETS","RATES","FOREX","PREDICTIONS","INFLATION","MACRO"].map((label,i) => {
+          const angle = (i / 6) * Math.PI * 2 - Math.PI/2;
+          const r = 195;
+          const x = 300 + r * Math.cos(angle);
+          const y = 250 + r * Math.sin(angle);
+          return <text key={label} x={x} y={y} fill="rgba(0,200,255,0.6)" fontSize="9" fontFamily="Share Tech Mono,monospace"
+            textAnchor="middle" dominantBaseline="middle" letterSpacing="1">{label}</text>;
+        })}
+
+        {/* Middle ring */}
+        <circle cx="300" cy="250" r="150" fill="none" stroke="rgba(0,200,255,0.2)" strokeWidth="1" strokeDasharray="5 8"
+          style={{transformOrigin:"300px 250px", animation:"spinR 15s linear infinite"}}/>
+
+        {/* Inner ring */}
+        <circle cx="300" cy="250" r="110" fill="none" stroke="rgba(0,180,255,0.4)" strokeWidth="1.5"/>
+        <circle cx="300" cy="250" r="105" fill="none" stroke="rgba(0,100,200,0.2)" strokeWidth="8"/>
+
+        {/* Earth circle */}
+        <circle cx="300" cy="250" r="95" fill="url(#earthGrad)" filter="url(#glow)"/>
+        <circle cx="300" cy="250" r="95" fill="none" stroke="rgba(0,200,255,0.6)" strokeWidth="1.5" filter="url(#glow)"/>
+
+        {/* Grid lines on earth */}
+        {[-60,-30,0,30,60].map(lat => {
+          const ry = lat * 95 / 90;
+          const rx = Math.sqrt(Math.max(0, 95*95 - ry*ry));
+          return <ellipse key={lat} cx="300" cy={250+ry} rx={rx} ry={rx*0.3} fill="none" stroke="rgba(0,200,255,0.12)" strokeWidth="0.8"/>;
+        })}
+        {[0,45,90,135].map(lng => {
+          const angle = lng * Math.PI / 180;
+          return <ellipse key={lng} cx="300" cy="250" rx={95*Math.abs(Math.cos(angle))} ry="95" fill="none" stroke="rgba(0,200,255,0.12)" strokeWidth="0.8" transform={`rotate(${lng} 300 250)`}/>;
+        })}
+
+        {/* Center text */}
+        <text x="300" y="238" textAnchor="middle" fill="rgba(0,200,255,0.9)" fontSize="13" fontFamily="Share Tech Mono,monospace" letterSpacing="2">ECONOMIC</text>
+        <text x="300" y="254" textAnchor="middle" fill="rgba(0,200,255,0.9)" fontSize="13" fontFamily="Share Tech Mono,monospace" letterSpacing="2">INTELLIGENCE</text>
+        <text x="300" y="270" textAnchor="middle" fill="rgba(0,200,255,0.9)" fontSize="13" fontFamily="Share Tech Mono,monospace" letterSpacing="2">SYSTEM</text>
+
+        {/* Dots on outer ring */}
+        {[0,1,2,3,4,5,6,7].map(i => {
+          const a = (i/8)*Math.PI*2;
+          return <circle key={i} cx={300+190*Math.cos(a)} cy={250+190*Math.sin(a)} r="3" fill="#00e5ff" filter="url(#glow)"/>;
+        })}
+
+        <style>{`
+          @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+          @keyframes spinR{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}
+        `}</style>
+      </svg>
+
+      {/* Date panel top-left of center */}
+      <div style={{position:"absolute",top:16,left:16,fontFamily:"'Share Tech Mono',monospace"}}>
+        <div style={{color:"rgba(0,200,255,0.4)",fontSize:11,letterSpacing:".2em"}}>{dateStr}</div>
+        <div style={{color:"#00e5ff",fontSize:32,fontWeight:700,lineHeight:1,textShadow:"0 0 20px rgba(0,229,255,0.7)"}}>{year}</div>
+        <div style={{color:"rgba(0,200,255,0.5)",fontSize:11,letterSpacing:".15em"}}>{day}</div>
+        <div style={{color:"rgba(0,200,255,0.4)",fontSize:13,marginTop:4}}>{timeStr}</div>
+      </div>
+
+      {/* Mission status top-right */}
+      <div style={{position:"absolute",top:16,right:16,fontFamily:"'Share Tech Mono',monospace",textAlign:"right"}}>
+        <div style={{color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".2em"}}>MISSION STATUS</div>
+        <div style={{color:"#00ff88",fontSize:16,letterSpacing:".2em",textShadow:"0 0 10px #00ff88"}}>ACTIVE</div>
+        <div style={{marginTop:12,color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".2em"}}>MARKET SENTIMENT</div>
+        <div style={{color:"#00e5ff",fontSize:14,letterSpacing:".15em"}}>BULLISH</div>
+        <div style={{
+          marginTop:4,border:"1px solid rgba(0,200,255,0.3)",borderRadius:3,
+          background:"rgba(0,200,255,0.06)",padding:"4px 10px",
+          color:"#00e5ff",fontSize:18,fontWeight:700,textAlign:"center"
+        }}>72%</div>
+      </div>
+
+      {/* Bottom-left: Inflation Outlook */}
+      <div style={{position:"absolute",bottom:80,left:16,fontFamily:"'Share Tech Mono',monospace",
+        background:"rgba(0,10,24,0.85)",border:"1px solid rgba(0,200,255,0.2)",borderRadius:5,padding:"10px 14px",minWidth:160}}>
+        <div style={{color:"rgba(0,200,255,0.5)",fontSize:9,letterSpacing:".18em",marginBottom:6}}>INFLATION OUTLOOK (US CPI)</div>
+        <div style={{color:"#00e5ff",fontSize:28,fontWeight:700,textShadow:"0 0 15px rgba(0,229,255,0.6)"}}>2.87%</div>
+        <div style={{color:"#63b3ed",fontSize:12,marginTop:2}}>▼ -0.02 MoM</div>
+        <div style={{marginTop:8,display:"flex",gap:4,alignItems:"flex-end",height:30}}>
+          {[45,38,42,35,28,22,18].map((h,i)=>(
+            <div key={i} style={{flex:1,background:`rgba(0,200,255,${0.15+i*0.08})`,height:`${h}px`,borderRadius:"2px 2px 0 0",maxHeight:30}}/>
+          ))}
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:8,color:"rgba(0,200,255,0.3)",marginTop:2}}>
+          {["JAN","FEB","MAR","APR","MAY","JUN","JUL"].map(m=><span key={m}>{m}</span>)}
+        </div>
+      </div>
+
+      {/* Bottom-right: Inflation Prediction */}
+      <div style={{position:"absolute",bottom:80,right:16,fontFamily:"'Share Tech Mono',monospace",
+        background:"rgba(0,10,24,0.85)",border:"1px solid rgba(0,200,255,0.2)",borderRadius:5,padding:"10px 14px",minWidth:160}}>
+        <div style={{color:"rgba(0,200,255,0.5)",fontSize:9,letterSpacing:".18em",marginBottom:6}}>INFLATION PREDICTION (NEXT 3 MONTHS)</div>
+        <div style={{color:"#00e5ff",fontSize:28,fontWeight:700,textShadow:"0 0 15px rgba(0,229,255,0.6)"}}>2.65%</div>
+        <div style={{color:"#68d391",fontSize:12,marginTop:2}}>▼ -0.15 AVG PROJ.</div>
+        <div style={{color:"rgba(0,200,255,0.4)",fontSize:9,marginTop:8,letterSpacing:".12em"}}>PREDICTION TREND</div>
+        <svg viewBox="0 0 120 30" style={{width:"100%",height:30,marginTop:4}}>
+          <polyline points="0,25 30,20 60,15 90,10 120,8" fill="none" stroke="#00e5ff" strokeWidth="1.5"
+            style={{filter:"drop-shadow(0 0 4px rgba(0,229,255,0.6))"}}/>
+          {[0,30,60,90,120].map((x,i)=>(
+            <circle key={i} cx={x} cy={[25,20,15,10,8][i]} r="2.5" fill="#00e5ff"/>
+          ))}
+          <text x="2" y="29" fontSize="7" fill="rgba(0,200,255,0.4)" fontFamily="monospace">JUL</text>
+          <text x="45" y="29" fontSize="7" fill="rgba(0,200,255,0.4)" fontFamily="monospace">AUG</text>
+          <text x="92" y="29" fontSize="7" fill="rgba(0,200,255,0.4)" fontFamily="monospace">SEP</text>
+        </svg>
+      </div>
+
+      {/* Bottom-center: Key events */}
+      <div style={{position:"absolute",bottom:80,left:"50%",transform:"translateX(-50%)",fontFamily:"'Share Tech Mono',monospace",
+        background:"rgba(0,10,24,0.85)",border:"1px solid rgba(0,200,255,0.15)",borderRadius:5,padding:"8px 14px",minWidth:200,textAlign:"center"}}>
+        <div style={{color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".18em",marginBottom:6}}>NEXT KEY EVENTS</div>
+        {[{date:"JUL 30",ev:"FED INTEREST RATE DECISION"},{date:"SEP 2026",ev:"ECB POLICY MEETING"}].map(({date,ev},i)=>(
+          <div key={i} style={{display:"flex",gap:10,alignItems:"center",marginBottom:4}}>
+            <span style={{color:"#00e5ff",fontSize:10,minWidth:55}}>{date}</span>
+            <span style={{color:"rgba(180,220,240,0.6)",fontSize:10}}>{ev}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Global insights bottom far right strip */}
+      <div style={{position:"absolute",right:0,top:"50%",transform:"translateY(-50%)",fontFamily:"'Share Tech Mono',monospace",padding:"10px 12px"}}>
+        <div style={{color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".2em",marginBottom:8}}>GLOBAL INSIGHTS</div>
+        {["ENERGY PRICES STABLE","SUPPLY CHAINS NORMALIZING","LABOR MARKET STRONG"].map((s,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,color:"rgba(180,220,240,0.6)",fontSize:10}}>
+            <span style={{color:"#00e5ff"}}>•</span>{s}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ════════════════════════════════════════════
    MAIN PAGE
 ════════════════════════════════════════════ */
 export default function Page() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [response, setResponse] = useState<EcoResponse | null>(null);
   const [chat, setChat] = useState<Msg[]>([]);
   const [listening, setListening] = useState(false);
   const [secs, setSecs] = useState(0);
   const [wakeOn, setWakeOn] = useState(false);
+  const [lastEcoMsg, setLastEcoMsg] = useState("");
   const chatEnd = useRef<HTMLDivElement>(null);
   const recRef = useRef<any>(null);
   const wakeRef = useRef<any>(null);
   const wakeLoop = useRef(true);
 
-  const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "").replace(/\/$/, "");
-  const EL_KEY  = process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY ?? "";
+  const EL_KEY = process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY ?? "";
 
   const ts  = () => new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const fmt = (s: number) =>
@@ -122,52 +306,31 @@ export default function Page() {
   const greet = useCallback(async () => {
     const msg = "Hey Boss, EcoAgent online. What would you like to know today?";
     setChat(p => [...p, { role: "eco", text: msg, time: ts() }]);
+    setLastEcoMsg(msg);
     await speakText(msg, EL_KEY);
   }, [EL_KEY]);
 
-  /* ── Ask backend ── */
+  /* ── Ask Claude directly ── */
   const askEco = useCallback(async (text: string) => {
     if (!text.trim()) return;
     setLoading(true);
     setQuery("");
     setChat(p => [...p, { role: "user", text, time: ts() }]);
 
-    if (!BACKEND) {
-      const err = "Boss, NEXT_PUBLIC_BACKEND_URL is not set in Vercel environment variables. Add it and redeploy.";
-      setChat(p => [...p, { role: "eco", text: err, time: ts() }]);
-      await speakText(err, EL_KEY);
-      setLoading(false);
-      return;
-    }
-
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 25000);
-      const res = await fetch(`${BACKEND}/ask`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
-      }
-      const data: EcoResponse = await res.json();
-      setResponse(data);
-      setChat(p => [...p, { role: "eco", text: data.speech, time: ts() }]);
-      if (data.speech) await speakText(data.speech, EL_KEY);
+      const reply = await askClaude(text);
+      setChat(p => [...p, { role: "eco", text: reply, time: ts() }]);
+      setLastEcoMsg(reply);
+      await speakText(reply, EL_KEY);
     } catch (err: any) {
-      const msg = err?.name === "AbortError"
-        ? "Boss, the backend timed out. Check Railway deployment is running."
-        : `Boss, error: ${String(err).slice(0, 180)}`;
-      setChat(p => [...p, { role: "eco", text: msg, time: ts() }]);
-      await speakText(msg, EL_KEY);
+      const errMsg = `Boss, couldn't reach intelligence systems: ${String(err).slice(0,120)}`;
+      setChat(p => [...p, { role: "eco", text: errMsg, time: ts() }]);
+      setLastEcoMsg(errMsg);
+      await speakText(errMsg, EL_KEY);
     } finally {
       setLoading(false);
     }
-  }, [BACKEND, EL_KEY]);
+  }, [EL_KEY]);
 
   /* ── Wake word listener ── */
   useEffect(() => {
@@ -228,7 +391,6 @@ export default function Page() {
     recRef.current = rec; rec.start(); setListening(true);
   }, [listening, askEco]);
 
-  /* ── Ticker marquee text ── */
   const tickerText = TICKER.join("   ·   ");
 
   return (
@@ -245,13 +407,13 @@ export default function Page() {
         @keyframes slideIn{from{opacity:0;transform:translateX(6px)}to{opacity:1;transform:translateX(0)}}
         @keyframes pulseGlow{0%,100%{box-shadow:0 0 10px rgba(0,255,100,.3)}50%{box-shadow:0 0 26px rgba(0,255,100,.8)}}
         @keyframes wakeFlash{0%{opacity:0}15%{opacity:1}85%{opacity:1}100%{opacity:0}}
-        @keyframes scanPulse{0%{opacity:.3}50%{opacity:.7}100%{opacity:.3}}
         @keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
         @keyframes dotsPulse{0%,100%{opacity:.4}50%{opacity:1}}
+        @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        @keyframes spinR{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}
 
         .root{display:flex;flex-direction:column;height:100vh;width:100vw;overflow:hidden;font-family:'Rajdhani',system-ui,sans-serif;background:#020a14;}
 
-        /* ── Header ── */
         .hdr{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:46px;border-bottom:1px solid rgba(0,200,255,.15);background:rgba(1,5,12,.98);flex-shrink:0;z-index:20;}
         .hdr-l{display:flex;align-items:center;gap:10px;}
         .diamond{width:18px;height:18px;background:linear-gradient(135deg,#00cfff,#0060ff);transform:rotate(45deg);box-shadow:0 0 14px rgba(0,200,255,.9);flex-shrink:0;}
@@ -261,19 +423,15 @@ export default function Page() {
         .hdr-r{display:flex;align-items:center;gap:8px;font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(0,200,255,.55);}
         .odot{width:8px;height:8px;border-radius:50%;background:#00ff88;box-shadow:0 0 10px #00ff88;animation:blink 2s ease-in-out infinite;}
 
-        /* ── Ticker marquee ── */
-        .ticker-wrap{height:28px;overflow:hidden;border-bottom:1px solid rgba(0,200,255,.08);background:rgba(0,6,16,.8);flex-shrink:0;display:flex;align-items:center;gap:0;z-index:20;}
+        .ticker-wrap{height:28px;overflow:hidden;border-bottom:1px solid rgba(0,200,255,.08);background:rgba(0,6,16,.8);flex-shrink:0;display:flex;align-items:center;z-index:20;}
         .ticker-live{font-family:'Share Tech Mono',monospace;font-size:9px;background:rgba(0,255,100,.1);border:1px solid rgba(0,255,100,.35);color:#00ff88;padding:2px 8px;letter-spacing:.2em;border-radius:2px;flex-shrink:0;margin:0 12px;}
         .ticker-track{display:flex;animation:marquee 40s linear infinite;white-space:nowrap;}
         .ticker-item{font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(0,200,255,.75);padding-right:80px;}
 
-        /* ── Wake banner ── */
         .wake{position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:99;background:rgba(0,255,150,.1);border:1px solid rgba(0,255,150,.4);border-radius:5px;padding:5px 18px;font-family:'Share Tech Mono',monospace;font-size:12px;color:#00ff96;letter-spacing:.15em;animation:wakeFlash 3s ease forwards;pointer-events:none;}
 
-        /* ── Body ── */
         .body{display:flex;flex:1;overflow:hidden;min-height:0;}
 
-        /* ── Left ── */
         .left{width:228px;flex-shrink:0;border-right:1px solid rgba(0,200,255,.1);display:flex;flex-direction:column;overflow-y:auto;background:rgba(1,5,14,.88);z-index:5;}
         .ph{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:.25em;color:rgba(0,200,255,.42);padding:10px 14px 5px;}
         .mc{margin:0 10px 8px;background:rgba(0,22,44,.55);border:1px solid rgba(0,200,255,.1);border-radius:5px;padding:9px 11px;}
@@ -291,49 +449,28 @@ export default function Page() {
         .ht{color:rgba(0,200,255,.2);flex-shrink:0;}
         .sess{margin:8px 14px 10px;font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(0,200,255,.28);}
 
-        /* ── Center: Earth map ── */
         .center{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;position:relative;}
-        .earth-wrap{flex:1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#020c1a;}
-
-        /* The earth image — Mollweide glowing map */
-        .earth-img{
-          width:90%;max-width:820px;
-          filter:drop-shadow(0 0 30px rgba(0,180,255,0.5)) drop-shadow(0 0 60px rgba(0,100,255,0.25));
-          position:relative;z-index:2;
-          animation:scanPulse 4s ease-in-out infinite;
-        }
-
-        /* Scanline overlay */
-        .scanlines{position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.04) 2px,rgba(0,0,0,0.04) 4px);pointer-events:none;z-index:3;}
-
-        /* Corner decorations */
-        .corner{position:absolute;width:24px;height:24px;border-color:rgba(0,200,255,.3);border-style:solid;z-index:4;}
+        .hud-wrap{flex:1;position:relative;overflow:hidden;background:#020c1a;}
+        .scanlines{position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.04) 2px,rgba(0,0,0,0.04) 4px);pointer-events:none;z-index:10;}
+        .corner{position:absolute;width:24px;height:24px;border-color:rgba(0,200,255,.3);border-style:solid;z-index:11;}
         .c-tl{top:10px;left:10px;border-width:1px 0 0 1px;}
         .c-tr{top:10px;right:10px;border-width:1px 1px 0 0;}
         .c-bl{bottom:10px;left:10px;border-width:0 0 1px 1px;}
         .c-br{bottom:10px;right:10px;border-width:0 1px 1px 0;}
 
-        /* News strip */
-        .news-strip{border-top:1px solid rgba(0,200,255,.08);height:150px;flex-shrink:0;display:flex;flex-direction:column;background:rgba(1,5,14,.75);z-index:5;}
-        .nrow{display:flex;gap:10px;overflow-x:auto;padding:8px 12px;flex:1;}
-        .nc{min-width:205px;max-width:205px;background:rgba(0,18,36,.85);border:1px solid rgba(0,200,255,.1);border-radius:5px;padding:9px 10px;cursor:pointer;transition:border-color .2s;text-decoration:none;display:block;flex-shrink:0;animation:slideIn .35s ease;}
-        .nc:hover{border-color:rgba(0,200,255,.4);}
-        .nc-src{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:.14em;color:rgba(0,200,255,.45);margin-bottom:5px;}
-        .nc-hl{font-size:12px;line-height:1.4;color:rgba(200,232,245,.85);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+        .intel-feed{border-top:1px solid rgba(0,200,255,.08);height:130px;flex-shrink:0;display:flex;flex-direction:column;background:rgba(1,5,14,.75);z-index:5;}
+        .feed-rows{flex:1;overflow-y:auto;padding:4px 14px;}
+        .feed-row{font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(180,220,240,0.6);padding:2px 0;border-bottom:1px solid rgba(0,200,255,0.04);}
+        .feed-time{color:rgba(0,200,255,0.4);margin-right:8px;}
 
-        /* ── Right: Intelligence Brief ── */
         .right{width:280px;flex-shrink:0;border-left:1px solid rgba(0,200,255,.1);display:flex;flex-direction:column;background:rgba(1,5,14,.88);z-index:5;}
         .iscroll{flex:1;overflow-y:auto;padding:10px 13px;}
         .ylbl{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:.2em;color:rgba(0,200,255,.36);margin-bottom:3px;}
         .ybox{background:rgba(0,200,255,.04);border:1px solid rgba(0,200,255,.17);border-radius:4px;padding:7px 9px;font-family:'Share Tech Mono',monospace;font-size:12px;color:#c8e8f0;margin-bottom:10px;word-break:break-word;}
         .elbl{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:.2em;color:rgba(0,255,140,.42);margin-bottom:5px;margin-top:4px;}
         .eresp{font-size:13px;line-height:1.65;color:#c8e8f0;animation:fadeIn .4s ease;}
-        .epred{margin-top:9px;padding-top:9px;border-top:1px solid rgba(0,200,255,.1);font-family:'Share Tech Mono',monospace;font-size:11px;color:#00e5ff;opacity:.72;}
-        .esrcs{margin-top:7px;display:flex;flex-wrap:wrap;gap:4px;}
-        .sbadge{font-family:'Share Tech Mono',monospace;font-size:9px;padding:2px 6px;border:1px solid rgba(0,200,255,.17);border-radius:2px;color:rgba(0,200,255,.52);}
         .await{display:flex;flex-direction:column;align-items:center;justify-content:center;height:130px;color:rgba(0,200,255,.18);font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:.2em;gap:8px;text-align:center;}
 
-        /* ── Input bar ── */
         .ibar{display:flex;align-items:center;gap:10px;padding:9px 16px;border-top:1px solid rgba(0,200,255,.12);background:rgba(1,4,11,.98);flex-shrink:0;z-index:20;}
         .mbutton{width:40px;height:40px;border-radius:50%;border:none;cursor:pointer;display:grid;place-items:center;font-size:17px;flex-shrink:0;transition:all .2s;}
         .midle{background:rgba(0,200,255,.08);box-shadow:0 0 10px rgba(0,200,255,.12);}
@@ -356,7 +493,7 @@ export default function Page() {
 
       {wakeOn && <div className="wake">◈ WAKE WORD DETECTED — ECONAGENT ACTIVE</div>}
 
-      {/* ── Header ── */}
+      {/* Header */}
       <header className="hdr">
         <div className="hdr-l">
           <div className="diamond" />
@@ -371,12 +508,11 @@ export default function Page() {
         </div>
       </header>
 
-      {/* ── Scrolling ticker ── */}
+      {/* Scrolling ticker */}
       <div className="ticker-wrap">
         <div className="ticker-live">LIVE</div>
         <div style={{ overflow:"hidden", flex:1 }}>
           <div className="ticker-track">
-            {/* Duplicate for seamless loop */}
             {[0,1].map(k => (
               <span key={k} className="ticker-item">{tickerText}</span>
             ))}
@@ -384,7 +520,7 @@ export default function Page() {
         </div>
       </div>
 
-      {/* ── Body ── */}
+      {/* Body */}
       <div className="body">
 
         {/* LEFT */}
@@ -427,53 +563,34 @@ export default function Page() {
           <div className="sess">SESSION {fmt(secs)}</div>
         </div>
 
-        {/* CENTER */}
+        {/* CENTER — HUD */}
         <div className="center">
-          <div className="earth-wrap">
-            {/* Scanlines */}
+          <div className="hud-wrap">
             <div className="scanlines" />
-            {/* Corner decorations */}
             <div className="corner c-tl" /><div className="corner c-tr" />
             <div className="corner c-bl" /><div className="corner c-br" />
-            {/* 
-              Earth map — using a free SVG world map rendered as glowing wireframe
-              This is the Mollweide-projection neon earth look from image 2
-            */}
-            <img
-              className="earth-img"
-              src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/World_map_-_low_resolution.svg/2560px-World_map_-_low_resolution.svg.png"
-              alt="Earth Intelligence Map"
-              style={{
-                width:"88%", maxWidth:820,
-                filter:"invert(1) sepia(1) saturate(3) hue-rotate(170deg) brightness(0.85) drop-shadow(0 0 20px rgba(0,200,255,0.7)) drop-shadow(0 0 60px rgba(0,100,255,0.4))",
-                mixBlendMode:"screen",
-                position:"relative", zIndex:2,
-              }}
-              onError={(e) => {
-                // Fallback: draw SVG globe inline if image fails
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
+            <HUDCenter secs={secs} />
           </div>
 
-          {/* News strip */}
-          <div className="news-strip">
-            <div className="ph" style={{padding:"7px 14px 4px"}}>// INTEL FEED</div>
-            <div className="nrow">
-              {loading && (
-                <div style={{display:"flex",alignItems:"center",gap:8,padding:"0 8px",fontFamily:"'Share Tech Mono',monospace",fontSize:11,color:"rgba(0,200,255,.42)"}}>
-                  <div className="dots"><span/><span/><span/></div>Fetching intelligence...
+          {/* Intel feed strip at bottom */}
+          <div className="intel-feed">
+            <div className="ph" style={{padding:"6px 14px 3px"}}>// INTEL FEED</div>
+            <div className="feed-rows">
+              {chat.filter(m=>m.role==="eco").slice(-4).map((m,i)=>(
+                <div key={i} className="feed-row">
+                  <span className="feed-time">[{m.time}]</span>
+                  {m.text}
+                </div>
+              ))}
+              {chat.filter(m=>m.role==="eco").length===0 && (
+                <div className="feed-row" style={{color:"rgba(0,200,255,.18)",letterSpacing:".12em"}}>
+                  SAY "HEY ECO" OR TYPE A QUERY TO LOAD LIVE INTEL
                 </div>
               )}
-              {response?.newsCards?.map((n,i) => (
-                <a key={i} className="nc" href={n.url} target="_blank" rel="noopener noreferrer">
-                  <div className="nc-src">{n.source?.toUpperCase()}</div>
-                  <div className="nc-hl">{n.headline}</div>
-                </a>
-              ))}
-              {!loading && !response && (
-                <div style={{display:"flex",alignItems:"center",padding:"0 8px",fontFamily:"'Share Tech Mono',monospace",fontSize:11,color:"rgba(0,200,255,.18)",letterSpacing:".12em"}}>
-                  SAY &quot;HEY ECO&quot; OR TYPE A QUERY TO LOAD LIVE INTEL
+              {loading && (
+                <div className="feed-row" style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <div className="dots"><span/><span/><span/></div>
+                  <span style={{color:"rgba(0,200,255,.42)"}}>Fetching intelligence...</span>
                 </div>
               )}
             </div>
@@ -499,16 +616,10 @@ export default function Page() {
                 <div className="dots"><span/><span/><span/></div>Processing briefing...
               </div>
             )}
-            {response && !loading && (
+            {!loading && lastEcoMsg && (
               <div style={{animation:"fadeIn .4s ease"}}>
                 <div className="elbl">ECONAGENT</div>
-                <div className="eresp">{response.speech}</div>
-                {response.prediction && <div className="epred">⟶ {response.prediction}</div>}
-                {response.sources?.length>0 && (
-                  <div className="esrcs">
-                    {response.sources.map((s,i)=><span key={i} className="sbadge">{s}</span>)}
-                  </div>
-                )}
+                <div className="eresp">{lastEcoMsg}</div>
               </div>
             )}
             <div ref={chatEnd}/>
@@ -517,7 +628,7 @@ export default function Page() {
 
       </div>
 
-      {/* ── Input ── */}
+      {/* Input bar */}
       <div className="ibar">
         <button className={`mbutton ${listening?"mon":"midle"}`} onClick={toggleMic} title="Voice input">🎙</button>
         <input className="qinp"
