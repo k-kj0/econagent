@@ -143,7 +143,7 @@ function ThreeGlobe({ active }: { active: string[] }) {
       // Atmosphere glow — outer sphere
       const atmoGeo = new THREE.SphereGeometry(1.04, 32, 32);
       const atmoMat = new THREE.MeshBasicMaterial({
-        color: 0x0044ff, transparent: true, opacity: 0.06, side: THREE.BackSide
+        color: 0x0044ff, transparent: true, opacity: 0.06, side: 1
       });
       scene.add(new THREE.Mesh(atmoGeo, atmoMat));
 
@@ -164,7 +164,7 @@ function ThreeGlobe({ active }: { active: string[] }) {
         AU: [133, -25], DE: [10, 51], FR: [2, 47], CA: [-96, 56],
       };
 
-      const dots: THREE.Mesh[] = [];
+      const dots: any[] = [];
       function updateDots() {
         dots.forEach(d => scene.remove(d));
         dots.length = 0;
