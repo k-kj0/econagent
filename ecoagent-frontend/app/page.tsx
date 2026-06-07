@@ -301,8 +301,8 @@ export default function Page() {
   const [secs,setSecs]=useState(0);
   const [wakeOn,setWakeOn]=useState(false);
   const chatEnd=useRef<HTMLDivElement>(null);
-  const recRef=useRef<SpeechRecognition|null>(null);
-  const wakeRef=useRef<SpeechRecognition|null>(null);
+  const recRef=useRef<any>(null);
+  const wakeRef=useRef<any>(null);
   const wakeLoop=useRef(true);
 
   const BACKEND=(process.env.NEXT_PUBLIC_BACKEND_URL??"").replace(/\/$/,"");
@@ -369,9 +369,9 @@ export default function Page() {
 
     function startWake(){
       if(!alive)return;
-      const rec:SpeechRecognition=new SR();
+      const rec:any=new SR();
       rec.continuous=false; rec.interimResults=false; rec.lang="en-US";
-      rec.onresult=async(e:SpeechRecognitionEvent)=>{
+      rec.onresult=async(e:any)=>{
         const said=e.results[0][0].transcript.toLowerCase();
         if(said.includes("hey eco")||said.includes("eco")){
           setWakeOn(true);
@@ -388,9 +388,9 @@ export default function Page() {
 
     function startCmd(){
       if(!alive)return;
-      const rec:SpeechRecognition=new SR();
+      const rec:any=new SR();
       rec.continuous=false; rec.interimResults=false; rec.lang="en-US";
-      rec.onresult=(e:SpeechRecognitionEvent)=>askEco(e.results[0][0].transcript);
+      rec.onresult=(e:any)=>askEco(e.results[0][0].transcript);
       rec.onend=()=>{if(alive)setTimeout(startWake,500);};
       rec.onerror=()=>{if(alive)setTimeout(startWake,1200);};
       try{rec.start();}catch{}
@@ -404,9 +404,9 @@ export default function Page() {
     const SR=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;
     if(!SR){alert("Use Chrome for voice.");return;}
     if(listening){recRef.current?.stop();setListening(false);return;}
-    const rec:SpeechRecognition=new SR();
+    const rec:any=new SR();
     rec.continuous=false; rec.interimResults=false; rec.lang="en-US";
-    rec.onresult=(e:SpeechRecognitionEvent)=>askEco(e.results[0][0].transcript);
+    rec.onresult=(e:any)=>askEco(e.results[0][0].transcript);
     rec.onend=()=>setListening(false);
     rec.onerror=()=>setListening(false);
     recRef.current=rec; rec.start(); setListening(true);
