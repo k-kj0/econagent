@@ -4,13 +4,16 @@ from pydantic import BaseModel
 import google.generativeai as genai
 import httpx
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 import json
 import re
 
 # Configure Gemini
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
-NEWS_KEY = os.environ.get("NEWS_API_KEY", "")
-GNEWS_KEY = os.environ.get("GNEWS_API_KEY", "")
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+NEWS_KEY = os.environ.get("NEWS_API_KEY")
+GNEWS_KEY = os.environ.get("GNEWS_API_KEY")
 
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
