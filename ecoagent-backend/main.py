@@ -8,12 +8,12 @@ import json
 import re
 
 # Configure Gemini
-GEMINI_KEY = os.environ.get("AQ.Ab8RN6JTo8UpqBt-NMUbc8MGs68XoTfVUDiz91d5QZ5I2rXVOg", "")
-NEWS_KEY = os.environ.get("b529f52876a24401920e984f808d5484", "")
-GNEWS_KEY = os.environ.get("apify_api_nPI4CLyS1fhqjw5FAau7u5xZxbAqvv3HkeKh", "")
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
+NEWS_KEY = os.environ.get("NEWS_API_KEY", "")
+GNEWS_KEY = os.environ.get("GNEWS_API_KEY", "")
 
 if GEMINI_KEY:
-    genai.configure(api_key=AQ.Ab8RN6JTo8UpqBt-NMUbc8MGs68XoTfVUDiz91d5QZ5I2rXVOg)
+    genai.configure(api_key=GEMINI_KEY)
     model = genai.GenerativeModel("gemini-1.5-flash")
 else:
     model = None
