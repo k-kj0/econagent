@@ -22,9 +22,12 @@ GNEWS_KEY   = os.getenv("GNEWS_API_KEY")
 MONGO_URI   = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 
 # ── Gemini ────────────────────────────────────────────────────────────────────
-if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+resp = await httpx.AsyncClient().post(
+    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}",
+    json={"contents":[{"parts":[{"text": f"{system_prompt}\n\n{user_prompt}"}]}]},
+    timeout=15
+)
+raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 else:
     model = None
 
