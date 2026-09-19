@@ -317,6 +317,8 @@ export default function Page() {
   const [wakeOn, setWakeOn]     = useState(false);
   const [lastEcoMsg, setLastEcoMsg] = useState("");
   const [ticker, setTicker]     = useState<string[]>(TICKER_STATIC);
+  const tickerRef = useRef<string[]>(TICKER_STATIC);
+  useEffect(() => { tickerRef.current = ticker; }, [ticker]);
   const [modal, setModal] = useState<{ q: string; topic: ReturnType<typeof pickTopic>; headlines: string[] } | null>(null);
   const chatEnd   = useRef<HTMLDivElement>(null);
   const recRef    = useRef<any>(null);
@@ -358,7 +360,7 @@ export default function Page() {
 
       const topic = pickTopic(text);
       const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-      let matched = ticker.filter(h => words.some(w => h.toLowerCase().includes(w)));
+      let matched = tickerRef.current.filter(h => words.some(w => h.toLowerCase().includes(w)));
       if (matched.length < 3) matched = ticker.slice(0, 5);
       setModal({ q: text, topic, headlines: matched.slice(0, 5) });
     } catch (err: any) {
@@ -369,7 +371,7 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  }, [ticker]);
+  }, []);
   useEffect(() => {
     const SR: any = typeof window !== "undefined"
       ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
@@ -409,9 +411,16 @@ export default function Page() {
         }
       };
       rec.onend = () => { if (alive && !wakeActive.current) setTimeout(startWake, 400); };
-      rec.onerror = () => { if (alive && !wakeActive.current) setTimeout(startWake, 1200); };
+      rec.onerror = (e: any) => {
+        console.warn("Wake listener error:", e?.error || e);
+        if (alive && !wakeActive.current) setTimeout(startWake, 1200);
+      };
       wakeRef.current = rec;
-      try { rec.start(); } catch{}
+      try {
+        rec.start();
+      } catch (e) {
+        console.warn("Wake listener failed to start:", e);
+      }
     };
 
     const t = setTimeout(startWake, 1000);
