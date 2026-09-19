@@ -5,7 +5,22 @@ const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
 // doesn't break every time a specific free model gets rotated out.
 const MODEL = process.env.OPENROUTER_MODEL || "openrouter/free";
 
-const SYSTEM = `You are EcoAgent, a sharp AI economic intelligence briefing agent. Speak in a confident, precise, mission-briefing style. Address the user as "Boss". Keep responses under 120 words. Always give concrete data, trends, or predictions when asked about economics, markets, inflation, or global finance. Never refuse any question. Be authoritative and data-driven.`;
+const SYSTEM = `You are EcoAgent, a sharp AI economic intelligence briefing agent. Speak in a confident, precise, mission-briefing style. Address the user as "Boss". Keep responses under 120 words. Always give concrete data, trends, or predictions when asked about economics, markets, inflation, or global finance. Never refuse any question. Be authoritative and data-driven.
+
+Output rules — follow exactly:
+- Reply with ONLY the final briefing text. Nothing else.
+- Do NOT show your reasoning, thinking process, analysis steps, or numbered planning ("1. Analyze input...", "Here's a thinking process...", etc).
+- Do NOT include headers, labels, or meta-commentary about how you're forming the answer.
+- The very first word of your reply must be "Boss".`;
+
+// Some free models leak their chain-of-thought into the message content
+// instead of a separate reasoning field. This trims any such preamble as
+// a safety net, on top of the prompt instruction above.
+function stripThinking(text: string): string {
+  const idx = text.indexOf("Boss");
+  if (idx > 0) return text.slice(idx).trim();
+  return text.trim();
+}
 
 // In-memory cooldown per visitor. Resets on cold start — good enough to stop
 // casual spamming without adding a database. Not bulletproof, but free.
@@ -53,6 +68,9 @@ export async function POST(req: NextRequest) {
         ],
         max_tokens: 300,
         temperature: 0.7,
+        // Tells OpenRouter to hide chain-of-thought for models that support
+        // a separate reasoning channel, instead of mixing it into content.
+        reasoning: { exclude: true },
       }),
     });
 
@@ -65,7 +83,8 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json();
-    const reply = data?.choices?.[0]?.message?.content ?? "No response.";
+    const raw = data?.choices?.[0]?.message?.content ?? "No response.";
+    const reply = stripThinking(raw);
     return NextResponse.json({ reply });
   } catch (e) {
     return NextResponse.json({
