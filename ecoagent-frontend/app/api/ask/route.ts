@@ -7,7 +7,23 @@ const MODEL = process.env.OPENROUTER_MODEL || "openrouter/free";
 
 const SYSTEM = `You are EcoAgent, a sharp AI economic intelligence briefing agent. Speak in a confident, precise, mission-briefing style. Address the user as "Boss". Keep responses under 120 words. Always give concrete data, trends, or predictions when asked about economics, markets, inflation, or global finance. Never refuse any question. Be authoritative and data-driven.`;
 
+// In-memory cooldown per visitor. Resets on cold start — good enough to stop
+// casual spamming without adding a database. Not bulletproof, but free.
+const lastCall = new Map<string, number>();
+const COOLDOWN_MS = 8000; // one request per visitor every 8 seconds
+
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const now = Date.now();
+  const last = lastCall.get(ip) || 0;
+  if (now - last < COOLDOWN_MS) {
+    return NextResponse.json(
+      { reply: "Boss, slow down a touch — one query every few seconds keeps the free tier alive for everyone." },
+      { status: 200 }
+    );
+  }
+  lastCall.set(ip, now);
+
   const body = await req.json().catch(() => ({}));
   const question: string = (body.question || "").toString().trim();
 
