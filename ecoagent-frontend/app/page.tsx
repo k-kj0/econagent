@@ -47,6 +47,76 @@ const TICKER_STATIC = [
   "IMF upgrades India growth forecast to 6.8% for 2026 · IMF",
 ];
 
+/* ── Pick which chart to show in the popup, based on the question asked ── */
+function pickTopic(q: string) {
+  const s = q.toLowerCase();
+  if (/(bitcoin|crypto|btc|coin)/.test(s))
+    return { label: "BTC/USD — 8-WEEK TREND", data: BTC, color: "#f6ad55" };
+  if (/(inflation|cpi|price|cost of living)/.test(s))
+    return { label: "US CPI — 8-WEEK TREND", data: CPI, color: "#00e5ff" };
+  return { label: "S&P 500 — 8-WEEK TREND", data: SP, color: "#68d391" };
+}
+
+const MONTH_LABELS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG"];
+
+/* ── Popup shown over the console when a question is answered ── */
+function InsightModal({
+  q, topic, headlines, onClose,
+}: { q: string; topic: ReturnType<typeof pickTopic>; headlines: string[]; onClose: () => void }) {
+  const max = Math.max(...topic.data), min = Math.min(...topic.data);
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: "absolute", inset: 0, zIndex: 60, display: "flex", alignItems: "center",
+        justifyContent: "center", background: "rgba(0,6,16,0.6)", backdropFilter: "blur(2px)" }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ width: "min(92%,460px)", background: "rgba(4,14,28,0.97)", border: "1px solid rgba(0,200,255,0.35)",
+          borderRadius: 8, padding: "16px 20px 20px", fontFamily: "'Share Tech Mono',monospace",
+          boxShadow: "0 0 40px rgba(0,200,255,0.18)" }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+          <div style={{ color: "rgba(0,200,255,0.5)", fontSize: 9, letterSpacing: ".16em", paddingRight: 10 }}>
+            RELATED DATA · "{q.length > 46 ? q.slice(0, 46) + "…" : q}"
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{ flexShrink: 0, background: "rgba(0,200,255,0.08)", border: "1px solid rgba(0,200,255,0.35)",
+              borderRadius: 4, color: "#00e5ff", width: 24, height: 24, cursor: "pointer", lineHeight: 1, fontSize: 13 }}
+          >✕</button>
+        </div>
+
+        <div style={{ color: "rgba(0,200,255,0.5)", fontSize: 9, letterSpacing: ".14em", marginBottom: 6 }}>{topic.label}</div>
+        <div style={{ display: "flex", gap: 5, alignItems: "flex-end", height: 60 }}>
+          {topic.data.map((v, i) => (
+            <div key={i} style={{
+              flex: 1, background: topic.color, opacity: 0.35 + (i / topic.data.length) * 0.55,
+              height: `${((v - min) / ((max - min) || 1)) * 52 + 6}px`, borderRadius: "2px 2px 0 0",
+            }} />
+          ))}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: "rgba(0,200,255,0.35)", marginTop: 3, marginBottom: 16 }}>
+          {MONTH_LABELS.map(m => <span key={m}>{m}</span>)}
+        </div>
+
+        <div style={{ color: "rgba(0,200,255,0.5)", fontSize: 9, letterSpacing: ".14em", marginBottom: 8 }}>RELATED HEADLINES</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7, maxHeight: 130, overflowY: "auto" }}>
+          {headlines.length === 0 && (
+            <div style={{ fontSize: 11, color: "rgba(180,220,240,0.4)" }}>No matching headlines right now.</div>
+          )}
+          {headlines.map((h, i) => (
+            <div key={i} style={{ fontSize: 11, color: "rgba(180,220,240,0.78)", lineHeight: 1.4 }}>
+              <span style={{ color: "#00e5ff" }}>▸</span> {h}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Browser text-to-speech (no key, no cost, no quota) ── */
 function speakText(text: string) {
   if (typeof window !== "undefined" && window.speechSynthesis) {
@@ -237,6 +307,7 @@ export default function Page() {
   const [wakeOn, setWakeOn]     = useState(false);
   const [lastEcoMsg, setLastEcoMsg] = useState("");
   const [ticker, setTicker]     = useState<string[]>(TICKER_STATIC);
+  const [modal, setModal] = useState<{ q: string; topic: ReturnType<typeof pickTopic>; headlines: string[] } | null>(null);
   const chatEnd   = useRef<HTMLDivElement>(null);
   const recRef    = useRef<any>(null);
   const wakeRef   = useRef<any>(null);
@@ -274,6 +345,12 @@ export default function Page() {
       setChat(p => [...p, { role: "eco", text: reply, time: ts() }]);
       setLastEcoMsg(reply);
       speakText(reply);
+
+      const topic = pickTopic(text);
+      const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      let matched = ticker.filter(h => words.some(w => h.toLowerCase().includes(w)));
+      if (matched.length < 3) matched = ticker.slice(0, 5);
+      setModal({ q: text, topic, headlines: matched.slice(0, 5) });
     } catch (err: any) {
       const errMsg = `Boss, intelligence systems error: ${String(err).slice(0,100)}`;
       setChat(p => [...p, { role: "eco", text: errMsg, time: ts() }]);
@@ -282,9 +359,7 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  /* ── Wake word: continuous background listener ── */
+  }, [ticker]);
   useEffect(() => {
     const SR: any = typeof window !== "undefined"
       ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
@@ -530,6 +605,14 @@ export default function Page() {
             <div className="corner c-tl" /><div className="corner c-tr" />
             <div className="corner c-bl" /><div className="corner c-br" />
             <HUDCenter secs={secs} />
+            {modal && (
+              <InsightModal
+                q={modal.q}
+                topic={modal.topic}
+                headlines={modal.headlines}
+                onClose={() => setModal(null)}
+              />
+            )}
           </div>
 
           {/* Intel Feed */}
