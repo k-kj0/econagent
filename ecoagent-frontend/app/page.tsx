@@ -229,13 +229,51 @@ function HUDCenter({ secs }: { secs: number }) {
         <div style={{color:"rgba(0,200,255,0.4)",fontSize:13,marginTop:4}}>{timeStr}</div>
       </div>
 
-      {/* Mission status */}
-      <div style={{position:"absolute",top:16,right:16,fontFamily:"'Share Tech Mono',monospace",textAlign:"right"}}>
-        <div style={{color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".2em"}}>MISSION STATUS</div>
-        <div style={{color:"#00ff88",fontSize:16,letterSpacing:".2em",textShadow:"0 0 10px #00ff88"}}>ACTIVE</div>
-        <div style={{marginTop:12,color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".2em"}}>MARKET SENTIMENT</div>
-        <div style={{color:"#00e5ff",fontSize:14,letterSpacing:".15em"}}>BULLISH</div>
-        <div style={{marginTop:4,border:"1px solid rgba(0,200,255,0.3)",borderRadius:3,background:"rgba(0,200,255,0.06)",padding:"4px 10px",color:"#00e5ff",fontSize:18,fontWeight:700,textAlign:"center"}}>72%</div>
+      {/* Right-side stack: Mission Status → Global Insights → Inflation Prediction.
+          Stacked in normal flow (not fixed pixel positions) so they can never
+          land on top of each other, no matter how short the screen is. If
+          space ever runs out it scrolls instead of overlapping. */}
+      <div style={{
+        position:"absolute", top:16, right:16, bottom:80, width:190,
+        display:"flex", flexDirection:"column", alignItems:"flex-end",
+        gap:14, overflowY:"auto", overflowX:"hidden",
+      }}>
+        {/* Mission status */}
+        <div style={{fontFamily:"'Share Tech Mono',monospace",textAlign:"right",flexShrink:0}}>
+          <div style={{color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".2em"}}>MISSION STATUS</div>
+          <div style={{color:"#00ff88",fontSize:16,letterSpacing:".2em",textShadow:"0 0 10px #00ff88"}}>ACTIVE</div>
+          <div style={{marginTop:12,color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".2em"}}>MARKET SENTIMENT</div>
+          <div style={{color:"#00e5ff",fontSize:14,letterSpacing:".15em"}}>BULLISH</div>
+          <div style={{marginTop:4,border:"1px solid rgba(0,200,255,0.3)",borderRadius:3,background:"rgba(0,200,255,0.06)",padding:"4px 10px",color:"#00e5ff",fontSize:18,fontWeight:700,textAlign:"center"}}>72%</div>
+        </div>
+
+        {/* Global insights */}
+        <div style={{fontFamily:"'Share Tech Mono',monospace",background:"rgba(0,10,24,0.85)",border:"1px solid rgba(0,200,255,0.15)",borderRadius:5,padding:"10px 14px",width:"100%",flexShrink:0}}>
+          <div style={{color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".2em",marginBottom:8}}>GLOBAL INSIGHTS</div>
+          {["ENERGY PRICES STABLE","SUPPLY CHAINS NORMALIZING","LABOR MARKET STRONG"].map((s,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,color:"rgba(180,220,240,0.6)",fontSize:10}}>
+              <span style={{color:"#00e5ff"}}>•</span>{s}
+            </div>
+          ))}
+        </div>
+
+        {/* Inflation Prediction */}
+        <div style={{fontFamily:"'Share Tech Mono',monospace",background:"rgba(0,10,24,0.85)",border:"1px solid rgba(0,200,255,0.2)",borderRadius:5,padding:"10px 14px",width:"100%",flexShrink:0}}>
+          <div style={{color:"rgba(0,200,255,0.5)",fontSize:9,letterSpacing:".18em",marginBottom:6}}>INFLATION PREDICTION (NEXT 3 MONTHS)</div>
+          <div style={{color:"#00e5ff",fontSize:28,fontWeight:700,textShadow:"0 0 15px rgba(0,229,255,0.6)"}}>2.65%</div>
+          <div style={{color:"#68d391",fontSize:12,marginTop:2}}>▼ -0.15 AVG PROJ.</div>
+          <div style={{color:"rgba(0,200,255,0.4)",fontSize:9,marginTop:8,letterSpacing:".12em"}}>PREDICTION TREND</div>
+          <svg viewBox="0 0 120 30" style={{width:"100%",height:30,marginTop:4}}>
+            <polyline points="0,25 30,20 60,15 90,10 120,8" fill="none" stroke="#00e5ff" strokeWidth="1.5"
+              style={{filter:"drop-shadow(0 0 4px rgba(0,229,255,0.6))"}}/>
+            {[0,30,60,90,120].map((x,i)=>(
+              <circle key={i} cx={x} cy={[25,20,15,10,8][i]} r="2.5" fill="#00e5ff"/>
+            ))}
+            <text x="2" y="29" fontSize="7" fill="rgba(0,200,255,0.4)" fontFamily="monospace">JUL</text>
+            <text x="45" y="29" fontSize="7" fill="rgba(0,200,255,0.4)" fontFamily="monospace">AUG</text>
+            <text x="92" y="29" fontSize="7" fill="rgba(0,200,255,0.4)" fontFamily="monospace">SEP</text>
+          </svg>
+        </div>
       </div>
 
       {/* Inflation Outlook */}
@@ -260,34 +298,6 @@ function HUDCenter({ secs }: { secs: number }) {
           <div key={i} style={{display:"flex",gap:10,alignItems:"center",marginBottom:4}}>
             <span style={{color:"#00e5ff",fontSize:10,minWidth:55}}>{date}</span>
             <span style={{color:"rgba(180,220,240,0.6)",fontSize:10}}>{ev}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Inflation Prediction */}
-      <div style={{position:"absolute",bottom:80,right:16,fontFamily:"'Share Tech Mono',monospace",background:"rgba(0,10,24,0.85)",border:"1px solid rgba(0,200,255,0.2)",borderRadius:5,padding:"10px 14px",minWidth:160}}>
-        <div style={{color:"rgba(0,200,255,0.5)",fontSize:9,letterSpacing:".18em",marginBottom:6}}>INFLATION PREDICTION (NEXT 3 MONTHS)</div>
-        <div style={{color:"#00e5ff",fontSize:28,fontWeight:700,textShadow:"0 0 15px rgba(0,229,255,0.6)"}}>2.65%</div>
-        <div style={{color:"#68d391",fontSize:12,marginTop:2}}>▼ -0.15 AVG PROJ.</div>
-        <div style={{color:"rgba(0,200,255,0.4)",fontSize:9,marginTop:8,letterSpacing:".12em"}}>PREDICTION TREND</div>
-        <svg viewBox="0 0 120 30" style={{width:"100%",height:30,marginTop:4}}>
-          <polyline points="0,25 30,20 60,15 90,10 120,8" fill="none" stroke="#00e5ff" strokeWidth="1.5"
-            style={{filter:"drop-shadow(0 0 4px rgba(0,229,255,0.6))"}}/>
-          {[0,30,60,90,120].map((x,i)=>(
-            <circle key={i} cx={x} cy={[25,20,15,10,8][i]} r="2.5" fill="#00e5ff"/>
-          ))}
-          <text x="2" y="29" fontSize="7" fill="rgba(0,200,255,0.4)" fontFamily="monospace">JUL</text>
-          <text x="45" y="29" fontSize="7" fill="rgba(0,200,255,0.4)" fontFamily="monospace">AUG</text>
-          <text x="92" y="29" fontSize="7" fill="rgba(0,200,255,0.4)" fontFamily="monospace">SEP</text>
-        </svg>
-      </div>
-
-      {/* Global insights */}
-      <div style={{position:"absolute",right:0,top:"50%",transform:"translateY(-50%)",fontFamily:"'Share Tech Mono',monospace",padding:"10px 12px"}}>
-        <div style={{color:"rgba(0,200,255,0.4)",fontSize:9,letterSpacing:".2em",marginBottom:8}}>GLOBAL INSIGHTS</div>
-        {["ENERGY PRICES STABLE","SUPPLY CHAINS NORMALIZING","LABOR MARKET STRONG"].map((s,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,color:"rgba(180,220,240,0.6)",fontSize:10}}>
-            <span style={{color:"#00e5ff"}}>•</span>{s}
           </div>
         ))}
       </div>
