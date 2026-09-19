@@ -3,13 +3,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 interface Msg { role: "user" | "eco"; text: string; time: string; }
 
-/* ─────────────────────────────────────────
-   API KEYS  (hardcoded so Vercel env not needed)
-───────────────────────────────────────── */
-const GEMINI_KEY  = "AIzaSyAQ.Ab8RN6IUr2ij1akkBiYXm65NRGsKOLEs9P6LrXwULzsgXogoHg";
-const NEWS_KEY    = "b529f52876a24401920e984f808d5484";
-const EL_KEY_HARD = "sk_8c558b90762b623d4cb06031f49d9f7f5f420bf2d095616f";
-
 /* ── Sparkline ── */
 function Spark({ data, color }: { data: number[]; color: string }) {
   const max = Math.max(...data), min = Math.min(...data);
@@ -54,33 +47,8 @@ const TICKER_STATIC = [
   "IMF upgrades India growth forecast to 6.8% for 2026 · IMF",
 ];
 
-/* ── ElevenLabs TTS + browser fallback ── */
-async function speakText(text: string) {
-  const elKey = EL_KEY_HARD;
-  if (elKey) {
-    try {
-      const res = await fetch(
-        "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM/stream",
-        {
-          method: "POST",
-          headers: { "xi-api-key": elKey, "Content-Type": "application/json", Accept: "audio/mpeg" },
-          body: JSON.stringify({
-            text,
-            model_id: "eleven_turbo_v2",
-            voice_settings: { stability: 0.45, similarity_boost: 0.85, style: 0.2, use_speaker_boost: true },
-          }),
-        }
-      );
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        await audio.play();
-        audio.onended = () => URL.revokeObjectURL(url);
-        return;
-      }
-    } catch (e) { console.warn("ElevenLabs error:", e); }
-  }
+/* ── Browser text-to-speech (no key, no cost, no quota) ── */
+function speakText(text: string) {
   if (typeof window !== "undefined" && window.speechSynthesis) {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
@@ -92,43 +60,30 @@ async function speakText(text: string) {
   }
 }
 
-/* ── Ask Gemini directly ── */
+/* ── Ask EcoAgent (server route — key never reaches the browser) ── */
 async function askGemini(question: string): Promise<string> {
-  const SYSTEM = `You are EcoAgent, a sharp AI economic intelligence briefing agent. Speak in a confident, precise, mission-briefing style. Address the user as "Boss". Keep responses under 120 words. Always give concrete data, trends, or predictions when asked about economics, markets, inflation, or global finance. Never refuse any question. Be authoritative and data-driven.`;
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
-
-  const res = await fetch(url, {
+  const res = await fetch("/api/ask", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [
-        { role: "user", parts: [{ text: SYSTEM + "\n\nUser question: " + question }] }
-      ],
-      generationConfig: { maxOutputTokens: 300, temperature: 0.7 }
-    }),
+    body: JSON.stringify({ question }),
   });
 
   if (!res.ok) {
     const err = await res.text().catch(() => "");
-    throw new Error(`Gemini ${res.status}: ${err.slice(0, 200)}`);
+    throw new Error(`EcoAgent ${res.status}: ${err.slice(0, 200)}`);
   }
 
   const data = await res.json();
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "No response from Gemini.";
+  return data?.reply ?? "No response.";
 }
 
-/* ── Fetch live news from NewsAPI ── */
+/* ── Fetch live news (server route) ── */
 async function fetchNews(): Promise<string[]> {
   try {
-    const res = await fetch(
-      `https://newsapi.org/v2/top-headlines?category=business&language=en&pageSize=10&apiKey=${NEWS_KEY}`
-    );
+    const res = await fetch("/api/news");
     if (!res.ok) return TICKER_STATIC;
     const data = await res.json();
-    const headlines = (data.articles || [])
-      .filter((a: any) => a.title && !a.title.includes("[Removed]"))
-      .map((a: any) => `${a.title} · ${a.source?.name ?? "News"}`);
+    const headlines: string[] = data?.headlines ?? [];
     return headlines.length > 3 ? headlines : TICKER_STATIC;
   } catch { return TICKER_STATIC; }
 }
